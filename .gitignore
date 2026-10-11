@@ -1,0 +1,14 @@
+node_modules
+.DS_Store
+dist
+dist-ssr
+*.local
+coverage
+tsconfig.tsbuildinfo
+src/services
+.ginger.tmp
+src/shared/references.ts
+*.lock
+public/config.json
+*.timestamp-*
+.pnpm-store

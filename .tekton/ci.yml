@@ -1,0 +1,93 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: build-pipeline
+  annotations:
+    x-gitter-enabled: "true"
+    x-gitter-load-ephemeral-env-kubeconfig: "true"
+spec:
+  params:
+    - name: image_tag
+      type: string
+
+  tasks:
+    - name: ginger-connector-setup
+      runAfter:
+        - clone
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: ginger-connector-setup
+          - name: namespace
+            value: default
+      params:
+        - name: run_refer
+          value: "true"
+
+    - name: build-frontend
+      runAfter:
+        - ginger-connector-setup
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: build-vite-spa
+          - name: namespace
+            value: default
+
+    - name: push-frontend-image
+      runAfter:
+        - build-frontend
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: build-and-push-frontend-image
+          - name: namespace
+            value: default
+      params:
+        - name: image_tag
+          value: "$(params.image_tag)"
+        - name: org_id
+          value: "$(params.org_id)"
+        - name: image_name
+          value: "reachout-fe"
+
+    - name: restart-reachout-deployment
+      runAfter:
+        - push-frontend-image
+      workspaces:
+        - name: ephemeral-kubeconfig
+          workspace: ephemeral-kubeconfig
+      taskRef:
+        resolver: cluster
+        params:
+          - name: kind
+            value: task
+          - name: name
+            value: restart-deployment
+          - name: namespace
+            value: default
+      params:
+        - name: deployment_name
+          value: "reachout"
+        - name: kube_context
+          value: "gingersociety"
+
+    - name: notify-version-update
+      runAfter:
+        - restart-reachout-deployment
+      taskSpec:
+        steps:
+          - name: echo
+            image: alpine
+            script: |
+              #!/bin/sh
+              echo "Hello World - all previous tasks are done!"

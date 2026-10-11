@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/ginger_mascot.ico" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Sets data-theme from the system preference before first paint (no light/dark flash)
+       and keeps it in sync if the user changes their OS theme while the app is open.
+       "light" in the <html> tag above stays as the fallback if this script can't run. -->
+  <script>
+    (function () {
+      try {
+        var mql = window.matchMedia('(prefers-color-scheme: dark)');
+        var apply = function () {
+          document.documentElement.setAttribute('data-theme', mql.matches ? 'dark' : 'light');
+        };
+        apply();
+        mql.addEventListener('change', apply);
+      } catch (e) { /* keep the default theme */ }
+    })();
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+
+  <title>Reachout - by Ginger Society</title>
+</head>
+
+<body style="background: var(--secondary-bg-color);">
+  <div data-js="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
+</html>

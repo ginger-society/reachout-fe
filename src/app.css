@@ -1,0 +1,144 @@
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
+    monospace;
+}
+
+.enum-row-renderer-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.no-shaddow {
+  box-shadow: initial !important;
+}
+
+.column-repr {
+  display: flex;
+  justify-content: space-between;
+}
+
+.heading-txt {
+  font-size: var(--medium-font-size);
+  display: inline-flex;
+  gap: 10px;
+}
+
+.workspace-container {
+  padding-top: 100px;
+  padding-right: 20%;
+  padding-left: 20%;
+}
+
+/* Media query for smaller screens */
+@media (max-width: 768px) {
+  .workspace-container {
+    padding-right: 50px;
+    padding-left: 50px;
+  }
+}
+
+.bring-forward {
+  box-shadow: 34px 20px 90px grey;
+}
+
+.blink-orange {
+  animation: animateBoxShadowOrange 3s ease-in-out infinite;
+}
+
+@keyframes animateBoxShadowOrange {
+  0% {
+    box-shadow: none;
+  }
+  50% {
+    box-shadow: 34px 20px 190px #ff7e00;
+  }
+  100% {
+    box-shadow: none;
+  }
+}
+
+.blink-red {
+  animation: animateBoxShadowRed 3s ease-in-out infinite;
+}
+
+@keyframes animateBoxShadowRed {
+  0% {
+    box-shadow: none;
+  }
+  50% {
+    box-shadow: 34px 20px 190px red;
+  }
+  100% {
+    box-shadow: none;
+  }
+}
+
+.block-footer-container {
+  display: flex;
+  justify-content: space-between;
+}
+
+.block-footer-action {
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--primary-bg-color);
+  color: var(--primary-color);
+  cursor: pointer;
+  border: none;
+  text-decoration: none;
+  flex-grow: 1;
+}
+.block-footer-action:hover {
+  background: var(--primary-accent-color);
+}
+
+.md-wrapper {
+  color: var(--primary-color);
+  height: 100vh;
+  overflow-y: auto;
+  h2 {
+    font-weight: 700;
+    margin-top: 20px;
+    text-decoration: underline;
+    font-size: 1.1em;
+  }
+  p {
+    font-size: 14px;
+  }
+  a {
+    font-weight: 600;
+    display: inline-block;
+    color: var(--primary-color);
+  }
+  img{
+    width: 100%;
+  }
+}
+
+.block-footer-additional-menu-item {
+  padding: 15px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  color: var(--primary-color);
+  text-decoration: none;
+}
+.block-footer-additional-menu-item:hover {
+  background: var(--primary-bg-color);
+}
+
+.swagger-ui {
+  background: white;
+  padding-top: 20px;
+}
