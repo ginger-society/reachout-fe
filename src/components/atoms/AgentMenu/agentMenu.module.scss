@@ -1,0 +1,70 @@
+.trigger {
+  gap: 10px;
+  padding-left: 6px;
+}
+
+.avatarWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.statusDot {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 11px;
+  height: 11px;
+  border: 2px solid var(--sd-sidebar);
+  border-radius: 50%;
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 10px 12px;
+}
+
+.identityText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agentName {
+  overflow: hidden;
+  color: var(--sd-text);
+  font-size: 15px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agentEmail {
+  overflow: hidden;
+  color: var(--sd-muted);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.divider {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--sd-border);
+}
+
+.grow {
+  flex: 1;
+}
+
+.check {
+  color: var(--sd-accent);
+  font-size: 12px;
+}
+
+.logoutIcon {
+  color: var(--sd-muted);
+  font-size: 13px;
+}

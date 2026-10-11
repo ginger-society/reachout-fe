@@ -1,5 +1,5 @@
 import router from "@/shared/router";
-import { HandleLoginRedirect } from "@gingersociety/ginger-ui";
+import { HandleLoginRedirect } from "@ginger-society/ginger-ui";
 
 export const HandleNavigation = () => {
   const navigateToHome = () => {

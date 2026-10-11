@@ -1,0 +1,339 @@
+// Panels sit edge to edge: no outer padding, no radius, one hairline between chats.
+.panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 270px;
+  // min-width: 0 stops long code blocks from stretching one panel wider than the rest
+  min-width: 0;
+  max-width: 560px;
+  min-height: 0;
+  background: var(--sd-surface);
+  border-right: 1px solid var(--sd-border);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 10px 12px 14px;
+  border-bottom: 1px solid var(--sd-border);
+}
+
+.who {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.nameRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.presence {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--sd-border-strong);
+}
+
+.presenceOn {
+  background: var(--sd-online);
+}
+
+.name {
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.url,
+.urlPlain {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--sd-muted);
+  font-size: 13px;
+}
+
+.url {
+  align-self: flex-start;
+  text-decoration: none;
+
+  &:hover {
+    color: var(--sd-accent);
+    text-decoration: underline;
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--sd-focus);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+.urlText,
+.urlPlain {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.urlIcon {
+  flex: none;
+  font-size: 10px;
+}
+
+.iconButton {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sd-muted);
+  font-size: 15px;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    color: var(--sd-text);
+    background: var(--sd-hover);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--sd-focus);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.45;
+  }
+}
+
+.menuWrap {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 230px;
+  padding: 6px;
+  background: var(--sd-surface-raised);
+  border: 1px solid var(--sd-border-strong);
+  border-radius: 12px;
+  box-shadow: var(--sd-shadow);
+}
+
+.menuItem {
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sd-text);
+  font: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: var(--sd-hover);
+  }
+
+  &:focus-visible {
+    outline: none;
+    box-shadow: inset 0 0 0 2px var(--sd-focus);
+  }
+}
+
+.log {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  min-height: 0;
+  padding: 16px 14px;
+  overflow-y: auto;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.rowAgent {
+  align-items: flex-end;
+}
+
+.bubble {
+  max-width: 88%;
+  padding: 11px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.bubbleCustomer {
+  background: var(--sd-bubble-in);
+}
+
+.bubbleAgent {
+  background: var(--sd-bubble-out);
+  color: #fff;
+}
+
+.textBlock {
+  display: block;
+  white-space: pre-wrap;
+}
+
+.code {
+  margin: 0;
+  padding: 9px 11px;
+  overflow-x: auto;
+  background: var(--sd-code-bg);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+// a code block next to text inside one bubble
+.textBlock + .code,
+.code + .textBlock,
+.code + .code {
+  margin-top: 8px;
+}
+
+.stamp {
+  color: var(--sd-muted);
+  font-size: 12px;
+}
+
+// "visitor is typing" bubble
+.typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 14px 16px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sd-muted);
+  animation: typingBounce 1.2s ease-in-out infinite;
+
+  &:nth-of-type(2) {
+    animation-delay: 0.15s;
+  }
+
+  &:nth-of-type(3) {
+    animation-delay: 0.3s;
+  }
+}
+
+@keyframes typingBounce {
+  0%,
+  60%,
+  100% {
+    opacity: 0.4;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 10px 8px 14px;
+  background: var(--sd-surface);
+  border-top: 1px solid var(--sd-border);
+  transition: border-color 0.15s ease;
+
+  &:focus-within {
+    border-top-color: var(--sd-accent);
+  }
+}
+
+.input {
+  width: 100%;
+  max-height: 140px;
+  padding: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--sd-text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  resize: none;
+
+  &::placeholder {
+    color: var(--sd-muted);
+  }
+}
+
+.composerFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hint {
+  color: var(--sd-muted);
+  font-size: 12px;
+}
+
+.send {
+  color: var(--sd-accent);
+
+  &:hover:not(:disabled) {
+    color: var(--sd-accent);
+  }
+}

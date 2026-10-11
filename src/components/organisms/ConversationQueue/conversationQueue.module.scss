@@ -1,0 +1,148 @@
+@use "../../../styles/sdTokens" as tokens;
+
+.sidebar {
+  // Always dark, regardless of <html data-theme>
+  @include tokens.dark;
+
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--sd-sidebar);
+  border-right: 1px solid var(--sd-border);
+  color: var(--sd-text);
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  padding: 14px 14px 6px;
+}
+
+.filter {
+  padding: 8px 20px 10px;
+}
+
+.capacity {
+  padding: 0 20px 12px;
+  color: var(--sd-muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.capacityFull {
+  color: var(--sd-away);
+}
+
+.list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0 10px 16px;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.item {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  padding: 14px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--sd-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: var(--sd-hover);
+  }
+
+  &:focus-visible {
+    outline: none;
+    background: var(--sd-selected);
+    box-shadow: inset 0 0 0 2px var(--sd-focus);
+  }
+
+  &:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.site {
+  overflow: hidden;
+  font-size: 16px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview {
+  overflow: hidden;
+  color: var(--sd-muted);
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  align-self: stretch;
+  padding: 4px 0;
+}
+
+.time {
+  color: var(--sd-muted);
+  font-size: 13px;
+}
+
+.badge {
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--sd-accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.online {
+  width: 9px;
+  height: 9px;
+  margin: 5px 5px 0 0;
+  border-radius: 50%;
+  background: var(--sd-online);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 32px 28px;
+  color: var(--sd-muted);
+  font-size: 14px;
+  line-height: 1.5;
+
+  strong {
+    color: var(--sd-text);
+    font-size: 15px;
+    font-weight: 600;
+  }
+}

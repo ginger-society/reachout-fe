@@ -1,0 +1,51 @@
+@use "../styles/sdTokens" as tokens;
+
+// Theme tokens for the chat board. Light by default; dark under <html data-theme="dark">.
+// The left queue ignores this and is always dark (see ConversationQueue styles).
+.root {
+  @include tokens.light;
+
+  display: grid;
+  grid-template-columns: 344px minmax(0, 1fr);
+  height: 100vh;
+  height: 100dvh;
+  background: var(--sd-bg);
+  color: var(--sd-text);
+}
+
+:global([data-theme="dark"]) .root {
+  @include tokens.dark;
+}
+
+// Chats sit edge to edge: no padding, no gaps.
+.board {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: auto;
+}
+
+.empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: var(--sd-muted);
+  font-size: 14px;
+  text-align: center;
+
+  strong {
+    color: var(--sd-text);
+    font-size: 16px;
+    font-weight: 600;
+  }
+}
+
+@media (max-width: 860px) {
+  .root {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 42%) minmax(0, 1fr);
+  }
+}

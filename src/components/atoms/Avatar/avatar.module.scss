@@ -1,0 +1,35 @@
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  user-select: none;
+}
+
+.sm {
+  width: 36px;
+  height: 36px;
+  font-size: 13px;
+}
+
+.md {
+  width: 44px;
+  height: 44px;
+  font-size: 15px;
+}
+
+.muted {
+  background-color: var(--sd-avatar-muted-bg);
+  color: var(--sd-avatar-muted-fg);
+}
+
+.colored {
+  color: #fff;
+  background-image: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.18),
+    rgba(0, 0, 0, 0.14)
+  );
+}

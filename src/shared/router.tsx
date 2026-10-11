@@ -1,8 +1,9 @@
 import { createHashRouter } from "react-router-dom";
 import HandleNavigation from "@/pages/HandleAuth";
 
-import { SystemThemePreferred, withAuthHOC } from '@gingersociety/ginger-ui';
+import { SystemThemePreferred, withAuthHOC } from '@ginger-society/ginger-ui';
 import ExampleComponent from "@/pages/ExamplePage";
+import SupportDashboardPage from "@/pages/SupportDashboardPage";
 
 
 const router = createHashRouter([
@@ -12,7 +13,7 @@ const router = createHashRouter([
   },
   {
     path: "/public/example",
-    element: <ExampleComponent />,
+    element: <SupportDashboardPage />,
   },
 ]);
 

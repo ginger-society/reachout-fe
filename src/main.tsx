@@ -1,13 +1,12 @@
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router-dom";
 import "./app.css";
-import "../node_modules/@gingersociety/ginger-ui/dist/esm/index.css";
-import "../node_modules/@ginger-society/ginger-ui-uml/dist/esm/index.css";
+import "../node_modules/@ginger-society/ginger-ui/dist/esm/index.css";
 
 
 
 import router from "./shared/router";
-import { SnackbarProvider, NotificationProvider, AuthContext, AuthContextInterface, AuthProvider, PermissionProvider } from "@gingersociety/ginger-ui";
+import { SnackbarProvider, NotificationProvider, AuthContext, AuthContextInterface, AuthProvider, PermissionProvider } from "@ginger-society/ginger-ui";
 import { ValidateTokenResponse } from "./services/IAMService_client";
 import { IAMService } from "./services";
 import { GINGER_SOCIETY_IAM_FRONTEND_USERS, GINGER_SOCIETY_NOTIFICATIONSERVICE_WS } from "./shared/references";

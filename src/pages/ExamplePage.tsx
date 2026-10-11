@@ -1,4 +1,4 @@
-import { Input, NotificationContext, Text } from "@gingersociety/ginger-ui";
+import { Input, NotificationContext, Text } from "@ginger-society/ginger-ui";
 import React, { useContext, useEffect } from "react";
 
 const ExampleComponent = () => {

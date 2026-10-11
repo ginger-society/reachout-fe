@@ -1,0 +1,18 @@
+.wrap {
+  display: block;
+  min-width: 0;
+}
+
+// The parent decides typography; ginger-ui <Text> only contributes the
+// theme-aware colour. !important is deliberate: <Text> ships its own size and
+// margin and we need to win regardless of where its stylesheet loads.
+.wrap > * {
+  margin: 0 !important;
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  line-height: inherit !important;
+  overflow: inherit;
+  text-overflow: inherit;
+  white-space: inherit;
+  word-break: inherit;
+}
