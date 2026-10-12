@@ -24,6 +24,12 @@
   --sd-avatar-muted-bg: #dfe5f5;
   --sd-avatar-muted-fg: #3b4663;
   --sd-shadow: 0 12px 32px rgba(15, 23, 42, 0.16);
+  --sd-wait-1: #b45309;
+  --sd-wait-1-bg: rgba(217, 119, 6, 0.1);
+  --sd-wait-2: #c2410c;
+  --sd-wait-2-bg: rgba(234, 88, 12, 0.18);
+  --sd-wait-3: #b91c1c;
+  --sd-wait-3-bg: rgba(220, 38, 38, 0.26);
 }
 
 @mixin dark {
@@ -49,4 +55,10 @@
   --sd-avatar-muted-bg: #232b4a;
   --sd-avatar-muted-fg: #c9d2ee;
   --sd-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --sd-wait-1: #fbbf24;
+  --sd-wait-1-bg: rgba(251, 191, 36, 0.1);
+  --sd-wait-2: #fb923c;
+  --sd-wait-2-bg: rgba(249, 115, 22, 0.22);
+  --sd-wait-3: #f87171;
+  --sd-wait-3-bg: rgba(239, 68, 68, 0.34);
 }

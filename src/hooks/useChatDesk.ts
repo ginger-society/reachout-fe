@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { AgentStatus, ChatThread, CustomerDetails } from "@/types/chat";
-import { lastActivityOf } from "@/utils/chatFormat";
+import { lastCustomerActivityOf } from "@/utils/chatFormat";
 import type { DropdownOption } from "@/components/atoms/MultiSelectDropdown/MultiSelectDropdown";
 
 /** An agent can have at most this many chats open at once. */
@@ -37,7 +37,7 @@ export function useChatDesk(
     () =>
       threads
         .filter((t) => t.state === "queued")
-        .sort((a, b) => lastActivityOf(b) - lastActivityOf(a)),
+        .sort((a, b) => lastCustomerActivityOf(b) - lastCustomerActivityOf(a)),
     [threads]
   );
 
@@ -120,7 +120,14 @@ export function useChatDesk(
     );
   }, []);
 
-  /** Agent -> customer. Call your API here too. */
+  /** The agent has seen the messages (e.g. via peek) without picking the chat up. */
+  const markRead = useCallback((id: string) => {
+    setThreads((prev) =>
+      prev.map((t) => (t.id === id && t.unread > 0 ? { ...t, unread: 0 } : t))
+    );
+  }, []);
+
+  /** Agent -> customer. Works on queued chats too (peek quick replies). Call your API here too. */
   const sendMessage = useCallback((id: string, text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -173,6 +180,8 @@ export function useChatDesk(
   }, []);
 
   return {
+    /** every thread, whatever its state (used to look up the peeked chat) */
+    threads,
     status,
     setStatus,
     queue: visibleQueue,
@@ -188,6 +197,7 @@ export function useChatDesk(
     resolveThread,
     transferThread,
     updateCustomer,
+    markRead,
     sendMessage,
     receiveMessage,
     setTyping,

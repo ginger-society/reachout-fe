@@ -42,13 +42,96 @@
   list-style: none;
 }
 
+// One queue row = pick-up button + peek button, so both share the urgency colour
+.row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  margin-bottom: 2px;
+  border-radius: 12px;
+  transition: background-color 0.4s ease;
+
+  // urgency bar on the left edge
+  &::before {
+    content: "";
+    position: absolute;
+    top: 10px;
+    bottom: 10px;
+    left: 0;
+    width: 3px;
+    border-radius: 2px;
+    background: transparent;
+    transition: background-color 0.4s ease;
+  }
+}
+
+// 20s+: look different (amber bar, faint tint, coloured time)
+.wait1 {
+  background: var(--sd-wait-1-bg);
+
+  &::before {
+    background: var(--sd-wait-1);
+  }
+
+  .time {
+    color: var(--sd-wait-1);
+    font-weight: 600;
+  }
+}
+
+// 40s+: more prominent background
+.wait2 {
+  background: var(--sd-wait-2-bg);
+
+  &::before {
+    width: 4px;
+    background: var(--sd-wait-2);
+  }
+
+  .time {
+    color: var(--sd-wait-2);
+    font-weight: 700;
+  }
+}
+
+// 60s+: strongest
+.wait3 {
+  background: var(--sd-wait-3-bg);
+
+  &::before {
+    width: 5px;
+    background: var(--sd-wait-3);
+  }
+
+  .time {
+    color: var(--sd-wait-3);
+    font-weight: 700;
+  }
+}
+
+// row being glanced at or pinned: outline links it to the floating card
+.peeking {
+  box-shadow: inset 0 0 0 1px var(--sd-border-strong);
+
+  .peekButton {
+    color: var(--sd-text);
+  }
+
+  .peekButton[aria-pressed="true"] {
+    color: var(--sd-accent);
+    background: var(--sd-selected);
+  }
+}
+
 .item {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 14px;
   width: 100%;
-  padding: 14px 12px;
+  min-width: 0;
+  padding: 14px 6px 14px 14px;
   border: 0;
   border-radius: 12px;
   background: transparent;
@@ -58,18 +141,41 @@
   cursor: pointer;
 
   &:hover:not(:disabled) {
-    background: var(--sd-hover);
+    background: rgba(255, 255, 255, 0.05);
   }
 
   &:focus-visible {
     outline: none;
-    background: var(--sd-selected);
     box-shadow: inset 0 0 0 2px var(--sd-focus);
   }
 
+  // only the pick-up half dims when slots are full; peek stays fully usable
   &:disabled {
     cursor: not-allowed;
-    opacity: 0.5;
+    opacity: 0.55;
+  }
+}
+
+.peekButton {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  margin-right: 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sd-muted);
+  font-size: 14px;
+  cursor: pointer;
+
+  &:hover {
+    color: var(--sd-text);
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--sd-focus);
   }
 }
 
@@ -108,6 +214,7 @@
 .time {
   color: var(--sd-muted);
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .badge {

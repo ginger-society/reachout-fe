@@ -48,3 +48,9 @@ export interface AgentProfile {
   /** websites this agent handles */
   sites: string[];
 }
+
+/** A canned reply an agent can send from the peek panel. */
+export interface QuickReply {
+  id: string;
+  text: string;
+}

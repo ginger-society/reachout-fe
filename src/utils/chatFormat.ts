@@ -15,10 +15,12 @@ export const displayName = (thread: ChatThread): string =>
 export const clockTime = (iso: string): string =>
   new Date(iso).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 
-/** 2m, 18m, 1h, 3d ... */
+/** 12s, 2m, 18m, 1h, 3d ... */
 export const shortAgo = (iso: string, now: number = Date.now()): string => {
-  const minutes = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60_000));
-  if (minutes < 1) return "now";
+  const seconds = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000));
+  if (seconds < 1) return "now";
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m`;
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return `${hours}h`;
@@ -42,3 +44,16 @@ export const prettyUrl = (url: string): string =>
 
 export const isValidEmail = (value: string): boolean =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+/**
+ * Time of the customer's most recent message. The queue sorts on this, so replying
+ * (e.g. with a quick reply) doesn't make a chat jump to the top of the list.
+ */
+export const lastCustomerActivityOf = (thread: ChatThread): number => {
+  for (let i = thread.messages.length - 1; i >= 0; i--) {
+    if (thread.messages[i].sender === "customer") {
+      return new Date(thread.messages[i].sentAt).getTime();
+    }
+  }
+  return 0;
+};

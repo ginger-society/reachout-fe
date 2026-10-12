@@ -1,11 +1,14 @@
 import Avatar from "@/components/atoms/Avatar/Avatar";
 import AgentMenu from "@/components/atoms/AgentMenu/AgentMenu";
+import PeekButton from "@/components/atoms/PeekButton/PeekButton";
 import MultiSelectDropdown, {
   DropdownOption,
 } from "@/components/atoms/MultiSelectDropdown/MultiSelectDropdown";
 import { useNow } from "@/hooks/useNow";
 import { AgentProfile, AgentStatus, ChatThread } from "@/types/chat";
 import { lastMessageOf, shortAgo } from "@/utils/chatFormat";
+import { PeekAnchor } from "@/utils/peek";
+import { WAIT_THRESHOLDS_SEC, waitLevel } from "@/utils/waitTime";
 import styles from "./conversationQueue.module.scss";
 
 interface ConversationQueueProps {
@@ -22,11 +25,19 @@ interface ConversationQueueProps {
   openCount: number;
   maxOpen: number;
   onOpenThread: (id: string) => void;
+  /** chat currently being peeked at (glance or pinned) */
+  peekId: string | null;
+  /** true when that peek is pinned open rather than a hover glance */
+  peekPinned: boolean;
+  onPeekGlance: (id: string, anchor: PeekAnchor) => void;
+  onPeekGlanceEnd: (id: string) => void;
+  onPeekToggle: (id: string, anchor: PeekAnchor) => void;
 }
 
 /**
  * Left panel. Always dark, whatever the page theme.
  * Visitors are anonymous here: we show the website and the message, never a name.
+ * Rows turn amber / orange / red the longer a customer has been waiting.
  */
 const ConversationQueue = ({
   agent,
@@ -41,8 +52,14 @@ const ConversationQueue = ({
   openCount,
   maxOpen,
   onOpenThread,
+  peekId,
+  peekPinned,
+  onPeekGlance,
+  onPeekGlanceEnd,
+  onPeekToggle,
 }: ConversationQueueProps) => {
-  const now = useNow();
+  // 1s tick so the wait timers (and colours) stay live
+  const now = useNow(1000);
   const full = openCount >= maxOpen;
 
   return (
@@ -72,7 +89,7 @@ const ConversationQueue = ({
         role="status"
       >
         {full
-          ? `${openCount} of ${maxOpen} chats open. Resolve or transfer one to pick up the next.`
+          ? `${openCount} of ${maxOpen} chats open. You can still peek and send a quick reply.`
           : `${openCount} of ${maxOpen} chats open`}
       </div>
 
@@ -94,21 +111,38 @@ const ConversationQueue = ({
         <ul className={styles.list}>
           {threads.map((thread) => {
             const last = lastMessageOf(thread);
+            const level = waitLevel(thread, now);
+            const peeking = thread.id === peekId;
+            const fromAgent = last?.sender === "agent";
+            const firstLine = last?.text.split("\n")[0];
+
             return (
-              <li key={thread.id}>
+              <li
+                key={thread.id}
+                className={[
+                  styles.row,
+                  level > 0 ? styles[`wait${level}`] : "",
+                  peeking ? styles.peeking : "",
+                ].join(" ")}
+              >
                 <button
                   type="button"
                   className={styles.item}
                   disabled={full}
-                  title={full ? "Resolve or transfer an open chat first" : undefined}
+                  title={full ? "All chat slots are in use. Resolve or transfer a chat first." : undefined}
                   onClick={() => onOpenThread(thread.id)}
                   aria-label={`Pick up chat from ${thread.site}${thread.unread ? `, ${thread.unread} unread` : ""
+                    }${level > 0
+                      ? `, waiting over ${WAIT_THRESHOLDS_SEC[level - 1]} seconds`
+                      : ""
                     }`}
                 >
                   <Avatar name={thread.site} />
                   <span className={styles.body}>
                     <span className={styles.site}>{thread.site}</span>
-                    <span className={styles.preview}>{last?.text.split("\n")[0]}</span>
+                    <span className={styles.preview}>
+                      {fromAgent ? `You: ${firstLine}` : firstLine}
+                    </span>
                   </span>
                   <span className={styles.meta}>
                     <span className={styles.time}>
@@ -123,6 +157,17 @@ const ConversationQueue = ({
                     ) : null}
                   </span>
                 </button>
+
+                {/* Peek is always available, even when every chat slot is taken */}
+                <PeekButton
+                  className={styles.peekButton}
+                  threadId={thread.id}
+                  site={thread.site}
+                  pinned={peeking && peekPinned}
+                  onGlance={(anchor) => onPeekGlance(thread.id, anchor)}
+                  onGlanceEnd={() => onPeekGlanceEnd(thread.id)}
+                  onToggle={(anchor) => onPeekToggle(thread.id, anchor)}
+                />
               </li>
             );
           })}
