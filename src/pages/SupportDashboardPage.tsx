@@ -1,11 +1,12 @@
-import { useCallback, useState } from "react";
-import ConversationQueue from "@/components/organisms/ConversationQueue/ConversationQueue";
+import { useCallback, useEffect, useState } from "react";
 import ChatPanel from "@/components/organisms/ChatPanel/ChatPanel";
+import ConversationQueue from "@/components/organisms/ConversationQueue/ConversationQueue";
 import PeekPanel from "@/components/organisms/PeekPanel/PeekPanel";
 import { useChatDesk } from "@/hooks/useChatDesk";
 import { currentAgent, teammates } from "@/mocks/agents";
 import { quickReplies } from "@/mocks/quickReplies";
-import { createMockThreads } from "@/mocks/supportThreads";
+import { AgentProfile } from "@/types/chat";
+import { AgentIdentity, loadIdentity } from "@/utils/agentAuth";
 import { PeekAnchor, PeekMode } from "@/utils/peek";
 import styles from "./supportDashboard.module.scss";
 
@@ -15,47 +16,45 @@ interface PeekState {
   anchor: PeekAnchor;
 }
 
-const SupportDashboardPage = () => {
-  // Swap the mocks for your API data when it's ready
-  const desk = useChatDesk(createMockThreads, currentAgent.sites, currentAgent.status);
+const Desk = ({ identity }: { identity: AgentIdentity }) => {
+  const desk = useChatDesk({ agentId: identity.agentId });
   const [peek, setPeek] = useState<PeekState | null>(null);
 
+  const agent: AgentProfile = {
+    id: String(identity.agentId),
+    name: identity.name,
+    email: identity.email,
+    color: currentAgent.color,
+    status: desk.status,
+    sites: [],
+  };
+
   // Only a chat that is still waiting in the queue can be peeked at.
-  // If it gets picked up or transferred, the peek closes on its own.
-  const peeked = peek
-    ? desk.threads.find((t) => t.id === peek.id && t.state === "queued")
-    : undefined;
+  // If it gets picked up or taken by someone else, the peek closes on its own.
+  const peeked = peek ? desk.threads.find((t) => t.id === peek.id && t.state === "queued") : undefined;
 
   const closePeek = useCallback(
     (returnFocus: boolean) => {
       const id = peek?.id;
       setPeek(null);
       if (returnFocus && id) {
-        // hand focus back to the eye button we came from
-        requestAnimationFrame(() =>
-          document.querySelector<HTMLElement>(`[data-peek-for="${id}"]`)?.focus()
-        );
+        requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-peek-for="${id}"]`)?.focus());
       }
     },
     [peek?.id]
   );
 
-  // Hover glance: ignored while another peek is pinned
   const glance = (id: string, anchor: PeekAnchor) => {
     setPeek((cur) => (cur?.mode === "pinned" ? cur : { id, mode: "glance", anchor }));
-    desk.markRead(id); // the agent has now seen the messages
+    desk.markRead(id);
   };
 
-  // Pointer left the eye: a glance disappears, a pinned peek stays
   const glanceEnd = (id: string) => {
     setPeek((cur) => (cur && cur.mode === "glance" && cur.id === id ? null : cur));
   };
 
-  // Click the eye: pin it (reveals quick replies), or unpin if already pinned
   const togglePin = (id: string, anchor: PeekAnchor) => {
-    setPeek((cur) =>
-      cur?.id === id && cur.mode === "pinned" ? null : { id, mode: "pinned", anchor }
-    );
+    setPeek((cur) => (cur?.id === id && cur.mode === "pinned" ? null : { id, mode: "pinned", anchor }));
     desk.markRead(id);
   };
 
@@ -64,10 +63,12 @@ const SupportDashboardPage = () => {
     console.warn("Logout is not wired up yet");
   };
 
+  const notice = desk.error ?? (desk.connection === "offline" ? "Connection lost. Reconnecting…" : null);
+
   return (
     <div className={styles.root}>
       <ConversationQueue
-        agent={currentAgent}
+        agent={agent}
         status={desk.status}
         onStatusChange={desk.setStatus}
         onLogout={handleLogout}
@@ -97,7 +98,7 @@ const SupportDashboardPage = () => {
             <ChatPanel
               key={thread.id}
               thread={thread}
-              agents={teammates}
+              agents={teammates /* TODO: real agent list */}
               onSend={desk.sendMessage}
               onUpdateCustomer={desk.updateCustomer}
               onTransfer={desk.transferThread}
@@ -120,8 +121,69 @@ const SupportDashboardPage = () => {
           onClose={closePeek}
         />
       )}
+
+      {notice && (
+        <div
+          role="status"
+          style={{
+            position: "fixed",
+            bottom: 16,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 1000,
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            padding: "10px 14px",
+            borderRadius: 10,
+            background: "#1f2430",
+            color: "#fff",
+            fontSize: 13,
+            boxShadow: "0 6px 24px rgba(0,0,0,.3)",
+          }}
+        >
+          <span>{notice}</span>
+          {desk.error && (
+            <button
+              type="button"
+              onClick={desk.dismissError}
+              style={{ background: "none", border: 0, color: "#fff", textDecoration: "underline", cursor: "pointer", font: "inherit" }}
+            >
+              Dismiss
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
+};
+
+/** Reads the signed-in agent from the access token, then mounts the desk. */
+const SupportDashboardPage = () => {
+  const [identity, setIdentity] = useState<AgentIdentity | null | undefined>(undefined);
+
+  useEffect(() => {
+    void loadIdentity().then(setIdentity);
+  }, []);
+
+  if (identity === undefined) {
+    return (
+      <div className={styles.root}>
+        <div className={styles.empty}><strong>Loading…</strong></div>
+      </div>
+    );
+  }
+  if (identity === null) {
+    return (
+      <div className={styles.root}>
+        <div className={styles.empty}>
+          <strong>Can't identify you</strong>
+          <span>No access token was found, or its user_id claim is not a numeric agent id.</span>
+        </div>
+      </div>
+    );
+  }
+  return <Desk identity={identity} />;
 };
 
 export default SupportDashboardPage;

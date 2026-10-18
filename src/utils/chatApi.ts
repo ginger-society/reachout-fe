@@ -1,0 +1,88 @@
+import { ReachoutPostmanService } from "@/services";
+import { GINGER_SOCIETY_GINGERREACHOUTPOSTMAN_SERVICE } from "@/shared/references";
+import { ChatMessage, ChatThread, ThreadState } from "@/types/chat";
+
+export const baseUrl = () => GINGER_SOCIETY_GINGERREACHOUTPOSTMAN_SERVICE().replace(/\/+$/, "");
+
+/** HTTP status of a failed generated-client call (ResponseError has it on `.response`); undefined = network error. */
+export const statusOf = (e: unknown): number | undefined => {
+  const s = (e as { response?: { status?: unknown } } | null)?.response?.status;
+  return typeof s === "number" ? s : undefined;
+};
+
+const COLORS = ["#3b82f6", "#7c5cf0", "#c13fc4", "#0ea5a4", "#f59e0b", "#ef4444", "#10b981", "#6366f1", "#ec4899"];
+const colorFor = (id: string) => {
+  let hash = 0;
+  for (const ch of id) hash = (hash * 31 + ch.charCodeAt(0)) >>> 0;
+  return COLORS[hash % COLORS.length];
+};
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+export function toMessage(raw: any): ChatMessage {
+  return {
+    id: raw.clientMsgId ?? raw.client_msg_id,
+    seq: Number(raw.seq) || undefined,
+    sender: String(raw.sender) === "agent" ? "agent" : "customer",
+    text: raw.text,
+    sentAt: new Date(Number(raw.ts) || Date.now()).toISOString(),
+  };
+}
+
+/** customer messages after the last agent message = what the agent hasn't answered */
+const trailingCustomer = (messages: ChatMessage[]) => {
+  let n = 0;
+  for (let i = messages.length - 1; i >= 0 && messages[i].sender === "customer"; i--) n++;
+  return n;
+};
+
+export function blankThread(id: string, site: string): ChatThread {
+  return {
+    id,
+    site,
+    pageUrl: "", // not known yet: comes with the tracker data later
+    color: colorFor(id),
+    online: false, // presence arrives with websockets
+    unread: 0,
+    state: "queued",
+    customer: {},
+    messages: [],
+  };
+}
+
+export function toThread(raw: any, state: ThreadState): ChatThread {
+  const id: string = raw.threadId ?? raw.thread_id;
+  const messages: ChatMessage[] = (raw.messages ?? []).map(toMessage);
+  return {
+    ...blankThread(id, raw.orgSlug ?? raw.org_slug),
+    state,
+    openedAt: state === "open" ? Number(raw.createdAt ?? raw.created_at) || Date.now() : undefined,
+    unread: state === "open" ? 0 : trailingCustomer(messages),
+    messages,
+  };
+}
+
+const assignedOf = (raw: any): number | null => {
+  const a = raw.assignedAgent ?? raw.assigned_agent;
+  return a === null || a === undefined ? null : Number(a);
+};
+
+export const agentApi = {
+  /** Takes the thread. Throws with status 409 if someone else got it first. */
+  assign: async (threadId: string): Promise<ChatThread> => {
+    const raw = await ReachoutPostmanService.routesAgentAssignThread({ threadId });
+    return { ...toThread(raw, "open"), openedAt: Date.now() };
+  },
+
+  get: async (threadId: string): Promise<{ thread: ChatThread; assignedAgent: number | null }> => {
+    const raw = await ReachoutPostmanService.routesAgentGetThread({ threadId });
+    return { thread: toThread(raw, "queued"), assignedAgent: assignedOf(raw) };
+  },
+
+  reply: async (threadId: string, clientMsgId: string, text: string): Promise<ChatMessage> => {
+    const r = await ReachoutPostmanService.routesAgentAgentReply({
+      threadId,
+      sendMessageRequest: { clientMsgId, text },
+    });
+    return toMessage(r.message);
+  },
+};

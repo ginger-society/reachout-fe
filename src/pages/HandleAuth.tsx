@@ -7,7 +7,7 @@ export const HandleNavigation = () => {
     if (path) {
       router.navigate(path);
     } else {
-      router.navigate("/manage-workspaces");
+      router.navigate("/support");
     }
   };
   return <HandleLoginRedirect handleNavigation={navigateToHome} />;

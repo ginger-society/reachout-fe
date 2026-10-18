@@ -5,6 +5,8 @@ import { SystemThemePreferred, withAuthHOC } from '@ginger-society/ginger-ui';
 import ExampleComponent from "@/pages/ExamplePage";
 import SupportDashboardPage from "@/pages/SupportDashboardPage";
 
+const AuthenticatedSupportDashboardPage = withAuthHOC(SupportDashboardPage)
+
 
 const router = createHashRouter([
   {
@@ -12,8 +14,8 @@ const router = createHashRouter([
     element: <HandleNavigation />,
   },
   {
-    path: "/public/example",
-    element: <SupportDashboardPage />,
+    path: "/support",
+    element: <AuthenticatedSupportDashboardPage />,
   },
 ]);
 

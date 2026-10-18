@@ -176,7 +176,9 @@ const ChatPanel = ({
               >
                 <MessageBody text={message.text} fromAgent={fromAgent} />
               </div>
-              <span className={styles.stamp}>{clockTime(message.sentAt)}</span>
+              <span className={styles.stamp}>
+                {message.status === "sending" ? "Sending…" : message.status === "failed" ? "Not sent" : clockTime(message.sentAt)}
+              </span>
             </div>
           );
         })}

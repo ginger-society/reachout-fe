@@ -12,3 +12,5 @@ src/shared/references.ts
 public/config.json
 *.timestamp-*
 .pnpm-store
+catter.sh
+combined_output.txt

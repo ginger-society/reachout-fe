@@ -8,6 +8,10 @@ export interface ChatMessage {
   text: string;
   /** ISO timestamp */
   sentAt: string;
+  /** server sequence number, known once the server has the message */
+  seq?: number;
+  /** only set while the message is not confirmed by the server */
+  status?: "sending" | "failed";
 }
 
 /** Everything is optional; filled in by the agent after picking up the chat. */
