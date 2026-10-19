@@ -5,6 +5,8 @@ import { useDismissable } from "@/hooks/useDismissable";
 import { AgentProfile, AgentStatus } from "@/types/chat";
 import dropdown from "../Dropdown/dropdown.module.scss";
 import styles from "./agentMenu.module.scss";
+import { AuthHeartBeat } from "@ginger-society/ginger-ui";
+import { IAMService } from "@/services";
 
 const STATUSES: { value: AgentStatus; label: string; color: string }[] = [
   { value: "available", label: "Available", color: "var(--sd-online)" },
@@ -26,8 +28,16 @@ const AgentMenu = ({ agent, status, onStatusChange, onLogout }: AgentMenuProps) 
   const wrapperRef = useDismissable<HTMLDivElement>(open, () => setOpen(false));
   const current = STATUSES.find((s) => s.value === status) ?? STATUSES[0];
 
+  const refreshTokenFn = async (refreshToken: string) => {
+    const tokens = await IAMService.identityRefreshToken({
+      refreshTokenRequest: { refreshToken },
+    });
+    return tokens.accessToken;
+  };
+
   return (
     <div className={dropdown.dropdown} ref={wrapperRef}>
+      <AuthHeartBeat refreshTokenFn={refreshTokenFn} />
       <button
         type="button"
         className={[dropdown.trigger, dropdown.ghost, styles.trigger].join(" ")}
