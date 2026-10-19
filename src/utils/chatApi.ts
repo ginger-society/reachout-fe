@@ -1,4 +1,4 @@
-import { ReachoutPostmanService } from "@/services";
+import { GingerPresence, ReachoutPostmanService } from "@/services";
 import { GINGER_SOCIETY_GINGERREACHOUTPOSTMAN_SERVICE } from "@/shared/references";
 import { ChatMessage, ChatThread, ThreadState } from "@/types/chat";
 
@@ -28,6 +28,12 @@ export function toMessage(raw: any): ChatMessage {
   };
 }
 
+/** The visitor's presence id, wherever the backend puts it (thread payload or SSE event). */
+export const visitorIdOf = (raw: any): string | undefined => {
+  const v = raw?.visitorId ?? raw?.visitor_id; // visitor id field
+  return typeof v === "string" && v ? v : undefined;
+};
+
 /** customer messages after the last agent message = what the agent hasn't answered */
 const trailingCustomer = (messages: ChatMessage[]) => {
   let n = 0;
@@ -35,13 +41,14 @@ const trailingCustomer = (messages: ChatMessage[]) => {
   return n;
 };
 
-export function blankThread(id: string, site: string): ChatThread {
+export function blankThread(id: string, site: string, visitorId?: string): ChatThread {
   return {
     id,
+    visitorId,
     site,
     pageUrl: "", // not known yet: comes with the tracker data later
     color: colorFor(id),
-    online: false, // presence arrives with websockets
+    online: false, // filled in by the presence poll
     unread: 0,
     state: "queued",
     customer: {},
@@ -53,7 +60,7 @@ export function toThread(raw: any, state: ThreadState): ChatThread {
   const id: string = raw.threadId ?? raw.thread_id;
   const messages: ChatMessage[] = (raw.messages ?? []).map(toMessage);
   return {
-    ...blankThread(id, raw.orgSlug ?? raw.org_slug),
+    ...blankThread(id, raw.orgSlug ?? raw.org_slug, visitorIdOf(raw)),
     state,
     openedAt: state === "open" ? Number(raw.createdAt ?? raw.created_at) || Date.now() : undefined,
     unread: state === "open" ? 0 : trailingCustomer(messages),
@@ -84,5 +91,53 @@ export const agentApi = {
       sendMessageRequest: { clientMsgId, text },
     });
     return toMessage(r.message);
+  },
+};
+
+// ───────────────────────── presence ─────────────────────────
+
+/** Presence channel of a visitor: reachout_visitor_<visitorId>. */
+export const visitorChannel = (visitorId: string) => `reachout_visitor_${visitorId}`;
+
+/** Channel ids per request, keeps the query string a sane length. */
+const PRESENCE_CHUNK = 40;
+
+export interface PresenceTarget {
+  threadId: string;
+  visitorId: string;
+}
+
+export const presenceApi = {
+  /**
+   * Online status for many visitors at once (GET /channel-status?channels=a,b,c).
+   * The service answers in the order of the channels we send.
+   * Returns { [threadId]: online } only for the threads it got an answer for,
+   * so a failed chunk keeps the last known status.
+   */
+  onlineMap: async (targets: PresenceTarget[]): Promise<Record<string, boolean>> => {
+    const chunks: PresenceTarget[][] = [];
+    for (let i = 0; i < targets.length; i += PRESENCE_CHUNK) {
+      chunks.push(targets.slice(i, i + PRESENCE_CHUNK));
+    }
+
+    const results = await Promise.allSettled(
+      chunks.map((chunk) =>
+        GingerPresence.routesChannelStatusChannelStatus({
+          channels: chunk.map((t) => visitorChannel(t.visitorId)).join(","),
+        })
+      )
+    );
+
+    const out: Record<string, boolean> = {};
+    results.forEach((result, i) => {
+      if (result.status !== "fulfilled") return;
+      const chunk = chunks[i];
+      const statuses = result.value.statuses;
+      if (!Array.isArray(statuses) || statuses.length !== chunk.length) return; // don't guess on a mismatch
+      chunk.forEach((t, j) => {
+        out[t.threadId] = statuses[j] === true;
+      });
+    });
+    return out;
   },
 };

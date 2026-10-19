@@ -2,7 +2,16 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "r
 import type { DropdownOption } from "@/components/atoms/MultiSelectDropdown/MultiSelectDropdown";
 import { AgentStatus, ChatMessage, ChatThread, CustomerDetails } from "@/types/chat";
 import { getAuthHeader } from "@/utils/agentAuth";
-import { agentApi, baseUrl, blankThread, statusOf, toMessage, toThread } from "@/utils/chatApi";
+import {
+  agentApi,
+  baseUrl,
+  blankThread,
+  presenceApi,
+  statusOf,
+  toMessage,
+  toThread,
+  visitorIdOf,
+} from "@/utils/chatApi";
 import { lastCustomerActivityOf } from "@/utils/chatFormat";
 import { connectSse } from "@/utils/sse";
 
@@ -10,6 +19,8 @@ import { connectSse } from "@/utils/sse";
 export const MAX_OPEN_CHATS = 4;
 const MAX_SEND_ATTEMPTS = 4;
 const NO_SEQ = Number.MAX_SAFE_INTEGER;
+/** How often visitor online status is refreshed from the presence service. */
+export const PRESENCE_POLL_MS = 10_000;
 
 export type Connection = "connecting" | "live" | "offline";
 
@@ -27,13 +38,14 @@ type State = Record<string, ChatThread>;
 type Action =
   | { type: "queue_snapshot"; threads: ChatThread[] }
   | { type: "mine_snapshot"; threads: ChatThread[] }
-  | { type: "incoming"; threadId: string; site: string; message: ChatMessage; source: "queue" | "mine" }
+  | { type: "incoming"; threadId: string; site: string; visitorId?: string; message: ChatMessage; source: "queue" | "mine" }
   | { type: "put"; thread: ChatThread }
   | { type: "assigned"; threadId: string; mine: boolean }
   | { type: "remove"; threadId: string }
   | { type: "send_start"; threadId: string; message: ChatMessage }
   | { type: "send_ok"; threadId: string; message: ChatMessage }
   | { type: "send_failed"; threadId: string; clientId: string }
+  | { type: "presence"; online: Record<string, boolean> } // keyed by thread id
   | { type: "patch"; threadId: string; patch: Partial<ChatThread> };
 
 /** Union by message id (server copy wins, clears "sending"), ordered by server seq; unconfirmed ones stay last. */
@@ -56,7 +68,9 @@ function reducer(s: State, a: Action): State {
       for (const [id, t] of Object.entries(s)) if (t.state !== "queued" || fresh.has(id)) next[id] = t; // authoritative
       for (const t of a.threads) {
         const ex = next[t.id];
-        next[t.id] = ex ? { ...ex, site: t.site, messages: mergeMessages(ex.messages, t.messages) } : t;
+        next[t.id] = ex
+          ? { ...ex, site: t.site, visitorId: t.visitorId ?? ex.visitorId, messages: mergeMessages(ex.messages, t.messages) }
+          : t;
       }
       return next;
     }
@@ -67,7 +81,14 @@ function reducer(s: State, a: Action): State {
       for (const t of a.threads) {
         const ex = next[t.id];
         if (!ex) next[t.id] = t;
-        else if (!isGone(ex)) next[t.id] = { ...ex, state: "open", messages: mergeMessages(ex.messages, t.messages) };
+        else if (!isGone(ex)) {
+          next[t.id] = {
+            ...ex,
+            state: "open",
+            visitorId: t.visitorId ?? ex.visitorId,
+            messages: mergeMessages(ex.messages, t.messages),
+          };
+        }
       }
       return next;
     }
@@ -76,7 +97,7 @@ function reducer(s: State, a: Action): State {
       if (!t) {
         if (a.source === "mine") return s; // the caller fetches the full thread
         const created: ChatThread = {
-          ...blankThread(a.threadId, a.site),
+          ...blankThread(a.threadId, a.site, a.visitorId),
           messages: [a.message],
           unread: a.message.sender === "customer" ? 1 : 0,
         };
@@ -87,6 +108,7 @@ function reducer(s: State, a: Action): State {
         ...s,
         [a.threadId]: {
           ...t,
+          visitorId: t.visitorId ?? a.visitorId,
           messages: mergeMessages(t.messages, [a.message]),
           unread: !duplicate && a.message.sender === "customer" && t.state !== "open" ? t.unread + 1 : t.unread,
         },
@@ -100,6 +122,7 @@ function reducer(s: State, a: Action): State {
         [a.thread.id]: {
           ...ex,
           site: a.thread.site,
+          visitorId: ex.visitorId ?? a.thread.visitorId,
           state: isGone(ex) ? ex.state : a.thread.state, // never resurrect a thread resolved here
           openedAt: ex.openedAt ?? a.thread.openedAt,
           unread: a.thread.state === "open" ? 0 : ex.unread,
@@ -131,6 +154,17 @@ function reducer(s: State, a: Action): State {
       if (!t) return s;
       const messages = t.messages.map((m) => (m.id === a.clientId && m.status ? { ...m, status: "failed" as const } : m));
       return { ...s, [a.threadId]: { ...t, messages } };
+    }
+    case "presence": {
+      // Only touch threads whose status actually changed; same state object = no re-render.
+      let next: State | null = null;
+      for (const [id, online] of Object.entries(a.online)) {
+        const t = s[id];
+        if (!t || t.online === online) continue;
+        if (!next) next = { ...s };
+        next[id] = { ...t, online };
+      }
+      return next ?? s;
     }
     case "patch": {
       const t = s[a.threadId];
@@ -166,6 +200,9 @@ interface Options {
  *   queued      -> unassigned thread, from GET /threads (SSE)         -> left panel
  *   open        -> assigned to this agent, GET /my-threads (SSE)      -> right board (max MAX_OPEN_CHATS)
  *   resolved / transferred -> hidden locally (NO backend endpoint yet, see TODOs)
+ *
+ * Visitor online status comes from the presence service (channel reachout_visitor_<visitorId>),
+ * polled every PRESENCE_POLL_MS for every queued / open thread that has a visitor id.
  */
 export function useChatDesk({ agentId, orgs = [], initialStatus = "available" }: Options) {
   const [state, dispatch] = useReducer(reducer, {} as State);
@@ -223,7 +260,7 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available" }:
           dispatch({ type: "queue_snapshot", threads: (p.threads ?? []).map((t: unknown) => toThread(t, "queued")) });
         } else if ((name === "thread_new" || name === "message") && p.message) {
           const message = toMessage(p.message);
-          dispatch({ type: "incoming", threadId: p.thread_id, site: p.org_slug, message, source: "queue" });
+          dispatch({ type: "incoming", threadId: p.thread_id, site: p.org_slug, visitorId: visitorIdOf(p), message, source: "queue" });
           if (message.seq !== 1 && !stateRef.current[p.thread_id]) void hydrate(p.thread_id); // we missed the start of it
         } else if (name === "assigned") {
           dispatch({ type: "assigned", threadId: p.thread_id, mine: p.agent_id === agentId });
@@ -244,7 +281,14 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available" }:
         if (name === "snapshot") {
           dispatch({ type: "mine_snapshot", threads: (p.threads ?? []).map((t: unknown) => toThread(t, "open")) });
         } else if ((name === "message" || name === "thread_new") && p.message) {
-          dispatch({ type: "incoming", threadId: p.thread_id, site: p.org_slug, message: toMessage(p.message), source: "mine" });
+          dispatch({
+            type: "incoming",
+            threadId: p.thread_id,
+            site: p.org_slug,
+            visitorId: visitorIdOf(p),
+            message: toMessage(p.message),
+            source: "mine",
+          });
           if (!stateRef.current[p.thread_id]) void hydrate(p.thread_id);
         } else if (name === "assigned") {
           dispatch({ type: "assigned", threadId: p.thread_id, mine: true }); // e.g. taken from another tab
@@ -261,6 +305,49 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available" }:
 
   // ---- selectors ----
   const threads = useMemo(() => Object.values(state), [state]);
+
+  // "threadId|visitorId" pairs for every queued / open thread that has a visitor id.
+  // Sorted so the key is stable and the poll only restarts when the set really changes.
+  const trackedKey = useMemo(
+    () =>
+      threads
+        .filter((t) => t.state === "queued" || t.state === "open")
+        .map((t) => `${t.id}|${t.visitorId ?? t.id}`)
+        .sort()
+        .join(","),
+    [threads]
+  );
+
+  // ---- visitor presence: poll now, whenever the set of threads changes, and on an interval ----
+  useEffect(() => {
+    if (!trackedKey) return;
+    const targets = trackedKey.split(",").map((pair) => {
+      const [threadId, visitorId] = pair.split("|");
+      return { threadId, visitorId };
+    });
+    let cancelled = false;
+    let busy = false;
+
+    const poll = async () => {
+      if (busy) return; // never overlap polls
+      busy = true;
+      try {
+        const online = await presenceApi.onlineMap(targets);
+        if (!cancelled) dispatch({ type: "presence", online });
+      } catch {
+        /* keep the last known status; the next tick tries again */
+      } finally {
+        busy = false;
+      }
+    };
+
+    void poll();
+    const timer = window.setInterval(poll, PRESENCE_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [trackedKey]);
 
   const queue = useMemo(
     () =>

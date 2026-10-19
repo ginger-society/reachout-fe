@@ -24,6 +24,8 @@ export interface CustomerDetails {
 export interface ChatThread {
   /** uuid. This is all we know about the visitor until the agent adds details. */
   id: string;
+  /** presence identity of the visitor (channel is reachout_visitor_<visitorId>). Not the same as `id`. */
+  visitorId?: string;
   /** website the visitor came from, e.g. "abc.com" */
   site: string;
   /** full URL of the page the visitor is currently on */

@@ -4,17 +4,21 @@ dir = "src/services"
 refs_file = "src/shared/references.ts"
 service_type = "Portal"
 
-[services."@ginger-society/NotificationService"]
-stage_k8 = "http://notification-service-service"
-prod_k8 = "http://notification-service-service"
-prod = "https://api.gingersociety.org"
-stage = "https://api.gingersociety.org"
+[services."@ginger-society/GingerPresence"]
+stage = "https://api.gingersociety.org/presence"
+prod = "https://api.gingersociety.org/presence"
 
 [services."@ginger-society/IAMService"]
+stage = "https://api.gingersociety.org/iam"
 stage_k8 = "http://iam-service-api-service/iam"
 prod = "https://api.gingersociety.org/iam"
 prod_k8 = "http://iam-service-api-service/iam"
-stage = "https://api.gingersociety.org/iam"
+
+[services."@ginger-society/NotificationService"]
+stage_k8 = "http://notification-service-service"
+stage = "https://api.gingersociety.org"
+prod = "https://api.gingersociety.org"
+prod_k8 = "http://notification-service-service"
 
 [services."@ginger-society/GingerReachoutPostman"]
 prod = "https://api.gingersociety.org/reachout-postman"
@@ -22,24 +26,28 @@ prod = "https://api.gingersociety.org/reachout-postman"
 [portals_refs."@ginger-society/iam-frontend-users"]
 prod = "https://iam.gingersociety.org"
 
-[ws_refs."@ginger-society/IAMService"]
-prod_k8 = ""
-stage_k8 = ""
-prod = ""
-stage = ""
-
 [ws_refs."@ginger-society/GingerReachoutPostman"]
 prod = ""
 
+[ws_refs."@ginger-society/GingerPresence"]
+prod = ""
+stage = ""
+
+[ws_refs."@ginger-society/IAMService"]
+stage_k8 = ""
+prod_k8 = ""
+stage = ""
+prod = ""
+
 [ws_refs."@ginger-society/NotificationService"]
-stage = "wss://api.gingersociety.org/notification"
-prod = "wss://api.gingersociety.org/notification"
 stage_k8 = "ws://notification-service-service/notification"
 prod_k8 = "ws://notification-service-service/notification"
+prod = "wss://api.gingersociety.org/notification"
+stage = "wss://api.gingersociety.org/notification"
 
 [urls]
-stage = "https://reachout.gingersociety.org"
 dev = "http://localhost:3000"
+stage = "https://reachout.gingersociety.org"
 prod = "https://reachout.gingersociety.org"
 
 [urls_ws]
