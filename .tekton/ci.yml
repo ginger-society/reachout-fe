@@ -77,7 +77,7 @@ spec:
             value: default
       params:
         - name: deployment_name
-          value: "reachout-fe"
+          value: "reachout-fe-deployment"
         - name: kube_context
           value: "gingersociety"
 
