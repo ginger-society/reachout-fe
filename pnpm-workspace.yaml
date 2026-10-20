@@ -5,3 +5,5 @@ allowBuilds:
   esbuild: true
   tree-sitter: true
   tree-sitter-json: true
+minimumReleaseAgeExclude:
+  - '@ginger-society/ginger-ui@0.164.0'

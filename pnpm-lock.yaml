@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@ginger-society/ginger-ui':
-        specifier: 0.163.0
-        version: 0.163.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
+        specifier: 0.164.0
+        version: 0.164.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)
       '@microsoft/fetch-event-source':
         specifier: ^2.0.1
         version: 2.0.1
@@ -534,8 +534,8 @@ packages:
     resolution: {integrity: sha512-nE7DEIchvtiFTwBw4Lfbu59PG+kCofhjsKaCWzxTpt4lfRjRMqG6uMBzKXuEcyXhOHoUp9riAm7/aWYGhXZ9cw==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
-  '@ginger-society/ginger-ui@0.163.0':
-    resolution: {integrity: sha512-Hbxo7guABC2iQRo00jQKZL8ggfhM+rRKE9geYTdjOWuNmYE+AGs45CwehjSlaoDaRk8p89Vm5M54b5uV7ArZbg==, tarball: https://npm.gingersociety.org/@ginger-society/ginger-ui/-/ginger-ui-0.163.0.tgz}
+  '@ginger-society/ginger-ui@0.164.0':
+    resolution: {integrity: sha512-0HYfjmpW6UzDXXdS3rQkVJP0Oez8Ekr5SorTHOzKUR1eJtw9zNtIDwCCXBvPxzQ3UfXglw98KZ+shfvyHN0nEQ==, tarball: https://npm.gingersociety.org/@ginger-society/ginger-ui/-/ginger-ui-0.164.0.tgz}
     engines: {node: '>=16'}
     peerDependencies:
       react: ^16.8.0 || ^17 || ^18
@@ -4450,7 +4450,7 @@ snapshots:
 
   '@eslint/js@9.39.4': {}
 
-  '@ginger-society/ginger-ui@0.163.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)':
+  '@ginger-society/ginger-ui@0.164.0(react-dom@18.2.0(react@18.2.0))(react@18.2.0)':
     dependencies:
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
