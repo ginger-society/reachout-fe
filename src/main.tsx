@@ -70,7 +70,7 @@ const init = async () => {
         window.location.href = `${GINGER_SOCIETY_IAM_FRONTEND_USERS()}#reachout/login?returnUrl=${router.state.location.pathname}`
       }
       postLoginNavigate={() =>
-        router.navigate("/example")
+        router.navigate("/support")
       }
     >
       <App />
