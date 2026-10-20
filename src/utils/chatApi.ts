@@ -104,6 +104,14 @@ export const agentApi = {
     return { thread: toThread(raw, "queued"), assignedAgent: assignedOf(raw) };
   },
 
+  /**
+   * Resolves (closes) a thread you own. The backend marks it closed, so it no longer comes back on reload, and the
+   * visitor's widget opens the rating dialog. Safe to retry. 403 = not yours, 410 = expired.
+   */
+  resolve: async (threadId: string): Promise<void> => {
+    await ReachoutPostmanService.routesAgentResolveThread({ threadId });
+  },
+
   reply: async (threadId: string, clientMsgId: string, text: string): Promise<ChatMessage> => {
     const r = await ReachoutPostmanService.routesAgentAgentReply({
       threadId,

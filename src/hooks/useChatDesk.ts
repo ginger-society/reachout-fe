@@ -202,7 +202,8 @@ interface Options {
  *
  *   queued      -> unassigned thread, from GET /threads (SSE)         -> left panel
  *   open        -> assigned to this agent, GET /my-threads (SSE)      -> right board (max MAX_OPEN_CHATS)
- *   resolved / transferred -> hidden locally (NO backend endpoint yet, see TODOs)
+ *   resolved               -> closed on the backend (POST /threads/<id>/resolve), the visitor is asked for a rating
+ *   transferred            -> hidden locally (NO backend endpoint yet, see TODOs)
  *
  * Visitor online status comes from the presence service (channel reachout_visitor_<visitorId>),
  * polled every PRESENCE_POLL_MS for every queued / open thread that has a visitor id.
@@ -301,6 +302,8 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
         } else if (name === "assigned") {
           dispatch({ type: "assigned", threadId: p.thread_id, mine: true }); // e.g. taken from another tab
           if (!stateRef.current[p.thread_id]) void hydrate(p.thread_id);
+        } else if (name === "resolved") {
+          dispatch({ type: "patch", threadId: p.thread_id, patch: { state: "resolved", openedAt: undefined } }); // e.g. resolved from another tab
         }
       },
     });
@@ -455,8 +458,20 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
     if (t && t.unread > 0) dispatch({ type: "patch", threadId: id, patch: { unread: 0 } });
   }, []);
 
-  // TODO(backend): no endpoint yet. Local only: the chat is hidden for this session.
-  const resolveThread = useCallback((id: string) => {
+  /**
+   * Closes the chat on the backend first and only then hides it, so a failed call never leaves a chat that looks
+   * resolved here but comes back on reload. An already expired chat (404 / 410) is simply hidden.
+   */
+  const resolveThread = useCallback(async (id: string) => {
+    try {
+      await agentApi.resolve(id);
+    } catch (e) {
+      const code = statusOf(e);
+      if (code !== 404 && code !== 410) {
+        setError(code === 403 ? "That chat is assigned to another agent." : "The chat could not be resolved. Try again.");
+        return;
+      }
+    }
     dispatch({ type: "patch", threadId: id, patch: { state: "resolved", openedAt: undefined } });
   }, []);
 
