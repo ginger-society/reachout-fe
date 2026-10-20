@@ -337,3 +337,12 @@
     color: var(--sd-accent);
   }
 }
+
+.bubbleCustomer {
+  transition: background-color 1.4s ease, border-color 1.4s ease;
+}
+.bubbleCustomer.bubbleFresh {
+  background-color: var(--sd-fresh-bg, #fff1e6);
+  border-color: var(--sd-fresh-border, #f6d9c4);
+}
+.input:disabled { opacity: .6; cursor: not-allowed; }

@@ -8,6 +8,7 @@ import {
   agentApi,
   baseUrl,
   blankThread,
+  customerOf,
   presenceApi,
   statusOf,
   toMessage,
@@ -30,6 +31,8 @@ import { connectSse } from "@/utils/sse";
 
 /** An agent can have at most this many chats open at once. */
 export const MAX_OPEN_CHATS = 4;
+/** After the visitor ends a chat, it stays on the board this long (with a notice) before it is removed. */
+export const CLOSED_CHAT_LINGER_MS = 30_000;
 const MAX_SEND_ATTEMPTS = 4;
 const NO_SEQ = Number.MAX_SAFE_INTEGER;
 /** How often visitor online status is refreshed from the presence service. */
@@ -42,7 +45,6 @@ const newId = () =>
   typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
-const clean = (value?: string) => value?.trim() || undefined;
 
 // ───────────────────────── state ─────────────────────────
 
@@ -55,6 +57,7 @@ type Action =
   | { type: "put"; thread: ChatThread }
   | { type: "assigned"; threadId: string; mine: boolean }
   | { type: "remove"; threadId: string }
+  | { type: "visitor_closed"; threadId: string; at: number } // the visitor ended the chat (local clock)
   | { type: "send_start"; threadId: string; message: ChatMessage }
   | { type: "send_ok"; threadId: string; message: ChatMessage }
   | { type: "send_failed"; threadId: string; clientId: string }
@@ -101,6 +104,7 @@ function reducer(s: State, a: Action): State {
             ...ex,
             state: "open",
             visitorId: t.visitorId ?? ex.visitorId,
+            customer: t.customer, // the server holds the saved contact card
             messages: mergeMessages(ex.messages, t.messages),
           };
         }
@@ -140,6 +144,8 @@ function reducer(s: State, a: Action): State {
           visitorId: ex.visitorId ?? a.thread.visitorId,
           state: isGone(ex) ? ex.state : a.thread.state, // never resurrect a thread resolved here
           openedAt: ex.openedAt ?? a.thread.openedAt,
+          visitorClosedAt: ex.visitorClosedAt ?? a.thread.visitorClosedAt,
+          customer: a.thread.customer, // the server holds the saved contact card
           unread: a.thread.state === "open" ? 0 : ex.unread,
           messages: mergeMessages(ex.messages, a.thread.messages),
         },
@@ -155,6 +161,16 @@ function reducer(s: State, a: Action): State {
     case "remove": {
       const { [a.threadId]: _removed, ...rest } = s;
       return rest;
+    }
+    case "visitor_closed": {
+      const t = s[a.threadId];
+      if (!t || isGone(t) || t.visitorClosedAt) return s;
+      if (t.state === "queued") {
+        // nobody had it: it just leaves the queue (a peek on it closes on its own)
+        const { [a.threadId]: _left, ...rest } = s;
+        return rest;
+      }
+      return { ...s, [a.threadId]: { ...t, visitorClosedAt: a.at, typing: false, draft: "" } };
     }
     case "send_start": {
       const t = s[a.threadId];
@@ -232,6 +248,10 @@ interface Options {
  *   resolved               -> closed on the backend (POST /threads/<id>/resolve), the visitor is asked for a rating
  *   transferred            -> hidden locally (NO backend endpoint yet, see TODOs)
  *
+ * The visitor ending the chat arrives as a `visitor_closed` event: a queued thread leaves the queue at once; an open one
+ * gets `visitorClosedAt`, the panel shows a notice with a countdown, and CLOSED_CHAT_LINGER_MS later it is hidden
+ * (state "resolved", local only: the backend already closed it and never sends it in a snapshot again).
+ *
  * Visitor reachability comes from the presence service (channel reachout_visitor_<visitorId>), polled every
  * PRESENCE_POLL_MS. Everything live comes over the notification socket (NotificationContext):
  *   - we call RPC `watch_visitor` on each queued / open visitor every WATCH_REFRESH_MS; the visitor then pushes its
@@ -262,6 +282,7 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
     async (id: string) => {
       try {
         const { thread, assignedAgent } = await agentApi.get(id);
+        if (thread.visitorClosedAt) return; // the visitor already left: nothing to show
         if (assignedAgent === null) dispatch({ type: "put", thread });
         else if (assignedAgent === agentId) {
           dispatch({ type: "put", thread: { ...thread, state: "open", openedAt: thread.openedAt ?? Date.now(), unread: 0 } });
@@ -306,6 +327,8 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
         } else if (name === "assigned") {
           dispatch({ type: "assigned", threadId: p.thread_id, mine: p.agent_id === agentId });
           if (p.agent_id === agentId && !stateRef.current[p.thread_id]) void hydrate(p.thread_id);
+        } else if (name === "visitor_closed") {
+          dispatch({ type: "visitor_closed", threadId: p.thread_id, at: Date.now() }); // queued: leaves the queue
         }
       },
     });
@@ -336,6 +359,11 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
           if (!stateRef.current[p.thread_id]) void hydrate(p.thread_id);
         } else if (name === "resolved") {
           dispatch({ type: "patch", threadId: p.thread_id, patch: { state: "resolved", openedAt: undefined } }); // e.g. resolved from another tab
+        } else if (name === "visitor_closed") {
+          dispatch({ type: "visitor_closed", threadId: p.thread_id, at: Date.now() });
+        } else if (name === "visitor_updated") {
+          // contact card saved from another tab (or echoed from this one: harmless)
+          dispatch({ type: "patch", threadId: p.thread_id, patch: { customer: customerOf(p.visitor) } });
         }
       },
     });
@@ -363,16 +391,40 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
   );
 
   // Same set plus the level of detail: queued chats get the basics (page, tab in view),
-  // open chats also get typing and the live draft.
+  // open chats also get typing and the live draft. A chat the visitor already left is no longer watched.
   const watchKey = useMemo(
     () =>
       threads
-        .filter((t) => t.state === "queued" || t.state === "open")
+        .filter((t) => (t.state === "queued" || t.state === "open") && !t.visitorClosedAt)
         .map((t) => `${t.id}|${t.visitorId ?? t.id}|${t.state === "open" ? "full" : "basic"}`)
         .sort()
         .join(","),
     [threads]
   );
+
+  // ---- a chat the visitor ended is removed after CLOSED_CHAT_LINGER_MS ----
+  const closedKey = useMemo(
+    () =>
+      threads
+        .filter((t) => t.state === "open" && t.visitorClosedAt)
+        .map((t) => `${t.id}|${t.visitorClosedAt}`)
+        .sort()
+        .join(","),
+    [threads]
+  );
+
+  useEffect(() => {
+    if (!closedKey) return;
+    const timers = closedKey.split(",").map((entry) => {
+      const [id, at] = entry.split("|");
+      const wait = Math.max(0, Number(at) + CLOSED_CHAT_LINGER_MS - Date.now());
+      return window.setTimeout(
+        () => dispatch({ type: "patch", threadId: id, patch: { state: "resolved", openedAt: undefined } }),
+        wait
+      );
+    });
+    return () => timers.forEach((id) => window.clearTimeout(id));
+  }, [closedKey]);
 
   // ---- visitor presence service: poll now, whenever the set of threads changes, and on an interval ----
   useEffect(() => {
@@ -438,7 +490,7 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
       const thread = stateRef.current[threadId];
       if (!thread) return;
       // a visitor may only speak for its own thread
-      if (thread.visitorId && ev.caller.sub !== thread.visitorId) return;
+      if (ev.caller.sub !== (thread.visitorId ?? thread.id)) return;
 
       if (k.type === "visitor_tab") {
         dispatch({ type: "live_tab", threadId, tabId, signal: k as unknown as VisitorTabSignal, now: Date.now() });
@@ -452,7 +504,7 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
   const openVisitorKey = useMemo(
     () =>
       threads
-        .filter((t) => t.state === "open")
+        .filter((t) => t.state === "open" && !t.visitorClosedAt)
         .map((t) => `${t.id}|${t.visitorId ?? t.id}`)
         .sort()
         .join(","),
@@ -463,7 +515,7 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
     (payload: Record<string, unknown>) => {
       if (!channel) return;
       for (const t of Object.values(stateRef.current)) {
-        if (t.state !== "open") continue;
+        if (t.state !== "open" || t.visitorClosedAt) continue;
         publish(visitorChannel(t.visitorId ?? t.id), { ...payload, thread: t.id, from: channel }).catch(() => undefined);
       }
     },
@@ -491,7 +543,7 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
   const sendTyping = useCallback(
     (id: string, typing: boolean) => {
       const t = stateRef.current[id];
-      if (!t || !channel) return;
+      if (!t || !channel || t.visitorClosedAt) return;
       publish(visitorChannel(t.visitorId ?? t.id), { type: "agent_typing", typing, thread: id, from: channel }).catch(
         () => undefined
       );
@@ -576,7 +628,7 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
         setError("Another agent already picked up that chat.");
       } else if (code === 410 || code === 404) {
         dispatch({ type: "remove", threadId: id });
-        setError("That chat has expired.");
+        setError("That chat has expired or the visitor already left.");
       } else {
         setError("Could not pick up the chat. Try again.");
       }
@@ -589,6 +641,7 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
   const sendMessage = useCallback((id: string, text: string) => {
     const trimmed = text.trim();
     if (!trimmed) return;
+    if (stateRef.current[id]?.visitorClosedAt) return; // the visitor left: nobody to read it
     const clientId = newId();
     dispatch({
       type: "send_start",
@@ -611,8 +664,8 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
           dispatch({ type: "send_failed", threadId: id, clientId });
           if (code === 403) setError("That chat is assigned to another agent.");
           else if (code === 410) {
-            dispatch({ type: "remove", threadId: id });
-            setError("That chat has expired.");
+            // expired, resolved, or the visitor closed it while this was in flight
+            setError("That chat has ended. The message was not delivered.");
           } else if (code === 429) setError("This chat reached its message limit.");
           else setError("A message could not be sent.");
           return;
@@ -644,18 +697,33 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
     dispatch({ type: "patch", threadId: id, patch: { state: "resolved", openedAt: undefined } });
   }, []);
 
+  /** "Remove now" on the visitor-left notice: the backend already closed the chat, so this is local only. */
+  const dismissClosedThread = useCallback((id: string) => {
+    dispatch({ type: "patch", threadId: id, patch: { state: "resolved", openedAt: undefined } });
+  }, []);
+
   // TODO(backend): no endpoint yet. Local only.
   const transferThread = useCallback((id: string, targetAgentId: string) => {
     dispatch({ type: "patch", threadId: id, patch: { state: "transferred", transferredTo: targetAgentId, openedAt: undefined } });
   }, []);
 
-  // TODO(backend): customer details are not stored server-side yet. Local only.
-  const updateCustomer = useCallback((id: string, details: CustomerDetails) => {
-    dispatch({
-      type: "patch",
-      threadId: id,
-      patch: { customer: { name: clean(details.name), email: clean(details.email), phone: clean(details.phone) } },
-    });
+  /**
+   * PATCH /threads/{id}/visitor. Resolves with null on success (the card is replaced by what the server stored)
+   * or with a message to show next to the form. Nothing changes locally on failure.
+   */
+  const updateCustomer = useCallback(async (id: string, details: CustomerDetails): Promise<string | null> => {
+    try {
+      const customer = await agentApi.updateVisitor(id, details);
+      dispatch({ type: "patch", threadId: id, patch: { customer } });
+      return null;
+    } catch (e) {
+      const code = statusOf(e);
+      if (code === 400) return "The server rejected those details. Check the email and phone number.";
+      if (code === 403) return "That chat is assigned to another agent.";
+      if (code === 404 || code === 410) return "That chat has expired, so the details could not be saved.";
+      if (code === 401) return "Your session has expired. Sign in again.";
+      return "Could not save the details. Try again.";
+    }
   }, []);
 
   return {
@@ -674,6 +742,7 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
     setSiteFilter,
     openThread,
     resolveThread,
+    dismissClosedThread,
     transferThread,
     updateCustomer,
     markRead,

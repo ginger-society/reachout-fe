@@ -77,6 +77,11 @@ export interface ChatThread {
   state: ThreadState;
   /** epoch ms, set when the thread is picked up */
   openedAt?: number;
+  /**
+   * Local epoch ms of the moment the visitor ended the chat (their "End chat"). The panel shows a notice and the
+   * thread is removed CLOSED_CHAT_LINGER_MS later. Undefined while the visitor is still there.
+   */
+  visitorClosedAt?: number;
   transferredTo?: string;
   customer: CustomerDetails;
   messages: ChatMessage[];

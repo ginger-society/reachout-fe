@@ -42,8 +42,20 @@ export const isHttpUrl = (value: string): boolean => /^https?:\/\//i.test(value)
 export const prettyUrl = (url: string): string =>
   url.replace(/^https?:\/\//i, "").replace(/\/$/, "");
 
+/** Same limits as the backend (config.rs / validate_visitor_update). */
+export const CUSTOMER_LIMITS = { name: 120, email: 254, phone: 32 } as const;
+
 export const isValidEmail = (value: string): boolean =>
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+/** Digits with an optional leading '+', spaces, '-', '(', ')', '.'; 6-15 digits (same rule as the backend). */
+export const isValidPhone = (value: string): boolean => {
+  const charsOk = [...value].every(
+    (c, i) => /\d/.test(c) || " -().".includes(c) || (c === "+" && i === 0)
+  );
+  const digits = value.replace(/\D/g, "").length;
+  return charsOk && digits >= 6 && digits <= 15;
+};
 
 /**
  * Time of the customer's most recent message. The queue sorts on this, so replying

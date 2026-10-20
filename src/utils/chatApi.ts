@@ -1,6 +1,6 @@
 import { GingerPresence, ReachoutPostmanService } from "@/services";
 import { GINGER_SOCIETY_GINGERREACHOUTPOSTMAN_SERVICE } from "@/shared/references";
-import { ChatMessage, ChatThread, ThreadState } from "@/types/chat";
+import { ChatMessage, ChatThread, CustomerDetails, ThreadState } from "@/types/chat";
 
 /**
  * Presence prefix of the agent's own socket, so their presence channel is support_<sub>. The backend puts that channel
@@ -47,6 +47,17 @@ export const visitorIdOf = (raw: any): string | undefined => {
   return typeof v === "string" && v ? v : undefined;
 };
 
+const text = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v : undefined);
+
+/**
+ * Contact details the agent saved, from a thread payload ({ visitor: {...} }) or a `visitor_updated` event
+ * ({ visitor: {...} }). Pass the whole payload, or the visitor object itself.
+ */
+export const customerOf = (raw: any): CustomerDetails => {
+  const v = raw?.visitor ?? raw;
+  return { name: text(v?.name), email: text(v?.email), phone: text(v?.phone) };
+};
+
 /** customer messages after the last agent message = what the agent hasn't answered */
 const trailingCustomer = (messages: ChatMessage[]) => {
   let n = 0;
@@ -77,6 +88,10 @@ export function toThread(raw: any, state: ThreadState): ChatThread {
     state,
     openedAt: state === "open" ? Number(raw.createdAt ?? raw.created_at) || Date.now() : undefined,
     unread: state === "open" ? 0 : trailingCustomer(messages),
+    // the server is the source of truth for the contact card (empty object when nothing is saved)
+    customer: customerOf(raw),
+    // the visitor already left: the local clock starts the "removing in" countdown now
+    visitorClosedAt: (raw.closedAt ?? raw.closed_at) ? Date.now() : undefined,
     messages,
   };
 }
@@ -118,6 +133,22 @@ export const agentApi = {
       sendMessageRequest: { clientMsgId, text },
     });
     return toMessage(r.message);
+  },
+
+  /**
+   * PATCH /threads/{id}/visitor. All three fields are always sent: an empty string clears a field on the server.
+   * Returns the contact card as the server stored it. 400 = invalid value, 403 = not your chat, 410 = expired.
+   */
+  updateVisitor: async (threadId: string, details: CustomerDetails): Promise<CustomerDetails> => {
+    const raw = await ReachoutPostmanService.routesAgentUpdateVisitor({
+      threadId,
+      updateVisitorRequest: {
+        name: details.name?.trim() ?? "",
+        email: details.email?.trim() ?? "",
+        phone: details.phone?.trim() ?? "",
+      },
+    });
+    return customerOf(raw);
   },
 };
 

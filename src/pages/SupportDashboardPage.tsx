@@ -38,7 +38,7 @@ const Desk = ({ user }: { user: ValidateTokenResponse }) => {
   };
 
   // Only a chat that is still waiting in the queue can be peeked at.
-  // If it gets picked up or taken by someone else, the peek closes on its own.
+  // If it gets picked up, taken by someone else, or the visitor leaves, the peek closes on its own.
   const peeked = peek ? desk.threads.find((t) => t.id === peek.id && t.state === "queued") : undefined;
 
   const closePeek = useCallback(
@@ -112,6 +112,7 @@ const Desk = ({ user }: { user: ValidateTokenResponse }) => {
               onUpdateCustomer={desk.updateCustomer}
               onTransfer={desk.transferThread}
               onResolve={desk.resolveThread}
+              onDismissClosed={desk.dismissClosedThread}
             />
           ))
         )}
