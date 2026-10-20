@@ -85,6 +85,8 @@ export interface ChatThread {
   transferredTo?: string;
   customer: CustomerDetails;
   messages: ChatMessage[];
+  /** language tag the visitor's page reported at chat start, e.g. "fr" or "hi-IN" */
+  lang?: string;
 }
 
 export interface AgentProfile {

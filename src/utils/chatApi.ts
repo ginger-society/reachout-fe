@@ -65,11 +65,16 @@ const trailingCustomer = (messages: ChatMessage[]) => {
   return n;
 };
 
-export function blankThread(id: string, site: string, visitorId?: string): ChatThread {
+
+export const langOf = (v: unknown): string | undefined => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+
+
+export function blankThread(id: string, site: string, visitorId?: string, lang?: string): ChatThread {
   return {
     id,
     visitorId,
     site,
+    lang,
     pageUrl: "", // not known yet: comes with the tracker data later
     color: colorFor(id),
     online: false, // filled in by the presence poll
@@ -84,7 +89,7 @@ export function toThread(raw: any, state: ThreadState): ChatThread {
   const id: string = raw.threadId ?? raw.thread_id;
   const messages: ChatMessage[] = (raw.messages ?? []).map(toMessage);
   return {
-    ...blankThread(id, raw.orgSlug ?? raw.org_slug, visitorIdOf(raw)),
+    ...blankThread(id, raw.orgSlug ?? raw.org_slug, visitorIdOf(raw), langOf(raw.lang)),
     state,
     openedAt: state === "open" ? Number(raw.createdAt ?? raw.created_at) || Date.now() : undefined,
     unread: state === "open" ? 0 : trailingCustomer(messages),

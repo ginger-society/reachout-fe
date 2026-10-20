@@ -10,7 +10,7 @@ import { useDismissable } from "@/hooks/useDismissable";
 import { CLOSED_CHAT_LINGER_MS } from "@/hooks/useChatDesk";
 import { useNow } from "@/hooks/useNow";
 import { AgentProfile, ChatThread, CustomerDetails } from "@/types/chat";
-import { clockTime, displayName, isHttpUrl, prettyUrl } from "@/utils/chatFormat";
+import { clockTime, displayName, isHttpUrl, langName, prettyUrl } from "@/utils/chatFormat";
 import CustomerDetailsModal from "./CustomerDetailsModal";
 import MessageBody from "./MessageBody";
 import TransferChatModal from "./TransferChatModal";
@@ -185,6 +185,7 @@ const ChatPanel = ({
             <span className={live.statusLabel}>
               {presenceLabel}
               {tabs > 1 ? ` · ${tabs} tabs` : ""}
+              {thread.lang ? ` · ${langName(thread.lang)}` : ""}
             </span>
           </div>
           {isHttpUrl(thread.pageUrl) ? (

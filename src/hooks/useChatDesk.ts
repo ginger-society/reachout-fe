@@ -9,6 +9,7 @@ import {
   baseUrl,
   blankThread,
   customerOf,
+  langOf,
   presenceApi,
   statusOf,
   toMessage,
@@ -53,7 +54,7 @@ type State = Record<string, ChatThread>;
 type Action =
   | { type: "queue_snapshot"; threads: ChatThread[] }
   | { type: "mine_snapshot"; threads: ChatThread[] }
-  | { type: "incoming"; threadId: string; site: string; visitorId?: string; message: ChatMessage; source: "queue" | "mine" }
+  | { type: "incoming"; threadId: string; site: string; visitorId?: string; lang?: string; message: ChatMessage; source: "queue" | "mine" }
   | { type: "put"; thread: ChatThread }
   | { type: "assigned"; threadId: string; mine: boolean }
   | { type: "remove"; threadId: string }
@@ -87,7 +88,13 @@ function reducer(s: State, a: Action): State {
       for (const t of a.threads) {
         const ex = next[t.id];
         next[t.id] = ex
-          ? { ...ex, site: t.site, visitorId: t.visitorId ?? ex.visitorId, messages: mergeMessages(ex.messages, t.messages) }
+          ? {
+            ...ex,
+            site: t.site,
+            lang: t.lang ?? ex.lang,
+            visitorId: t.visitorId ?? ex.visitorId,
+            messages: mergeMessages(ex.messages, t.messages),
+          }
           : t;
       }
       return next;
@@ -103,6 +110,7 @@ function reducer(s: State, a: Action): State {
           next[t.id] = {
             ...ex,
             state: "open",
+            lang: t.lang ?? ex.lang,
             visitorId: t.visitorId ?? ex.visitorId,
             customer: t.customer, // the server holds the saved contact card
             messages: mergeMessages(ex.messages, t.messages),
@@ -116,7 +124,7 @@ function reducer(s: State, a: Action): State {
       if (!t) {
         if (a.source === "mine") return s; // the caller fetches the full thread
         const created: ChatThread = {
-          ...blankThread(a.threadId, a.site, a.visitorId),
+          ...blankThread(a.threadId, a.site, a.visitorId, a.lang),
           messages: [a.message],
           unread: a.message.sender === "customer" ? 1 : 0,
         };
@@ -127,6 +135,7 @@ function reducer(s: State, a: Action): State {
         ...s,
         [a.threadId]: {
           ...t,
+          lang: t.lang ?? a.lang,
           visitorId: t.visitorId ?? a.visitorId,
           messages: mergeMessages(t.messages, [a.message]),
           unread: !duplicate && a.message.sender === "customer" && t.state !== "open" ? t.unread + 1 : t.unread,
@@ -141,6 +150,7 @@ function reducer(s: State, a: Action): State {
         [a.thread.id]: {
           ...ex,
           site: a.thread.site,
+          lang: ex.lang ?? a.thread.lang,
           visitorId: ex.visitorId ?? a.thread.visitorId,
           state: isGone(ex) ? ex.state : a.thread.state, // never resurrect a thread resolved here
           openedAt: ex.openedAt ?? a.thread.openedAt,
@@ -258,6 +268,9 @@ interface Options {
  *     page URL, tab in view and (for open chats) typing + draft. Several tabs are merged in utils/visitorLive.ts.
  *   - we publish agent_typing / agent_state / agent_bye to the visitors of the chats we have open.
  *
+ * The visitor's page language (`lang`) is a thread attribute: it arrives with the thread payload (snapshots, GET /threads/<id>)
+ * and with the `thread_new` / `message` events, so no live signal is needed for it.
+ *
  * The other direction of the chat needs nothing here: picking a chat up sends `profile` with POST /assign, the backend stores it and
  * streams it to the visitor together with this agent's presence channel (support_<sub>, see AGENT_CHANNEL_PREFIX).
  */
@@ -322,7 +335,15 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
           dispatch({ type: "queue_snapshot", threads: (p.threads ?? []).map((t: unknown) => toThread(t, "queued")) });
         } else if ((name === "thread_new" || name === "message") && p.message) {
           const message = toMessage(p.message);
-          dispatch({ type: "incoming", threadId: p.thread_id, site: p.org_slug, visitorId: visitorIdOf(p), message, source: "queue" });
+          dispatch({
+            type: "incoming",
+            threadId: p.thread_id,
+            site: p.org_slug,
+            visitorId: visitorIdOf(p),
+            lang: langOf(p.lang),
+            message,
+            source: "queue",
+          });
           if (message.seq !== 1 && !stateRef.current[p.thread_id]) void hydrate(p.thread_id); // we missed the start of it
         } else if (name === "assigned") {
           dispatch({ type: "assigned", threadId: p.thread_id, mine: p.agent_id === agentId });
@@ -350,6 +371,7 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
             threadId: p.thread_id,
             site: p.org_slug,
             visitorId: visitorIdOf(p),
+            lang: langOf(p.lang),
             message: toMessage(p.message),
             source: "mine",
           });

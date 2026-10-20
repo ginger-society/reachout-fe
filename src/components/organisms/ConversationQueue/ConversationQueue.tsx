@@ -6,7 +6,7 @@ import MultiSelectDropdown, {
 } from "@/components/atoms/MultiSelectDropdown/MultiSelectDropdown";
 import { useNow } from "@/hooks/useNow";
 import { AgentProfile, AgentStatus, ChatThread } from "@/types/chat";
-import { lastMessageOf, shortAgo } from "@/utils/chatFormat";
+import { langCode, langName, lastMessageOf, shortAgo } from "@/utils/chatFormat";
 import { PeekAnchor } from "@/utils/peek";
 import { WAIT_THRESHOLDS_SEC, waitLevel } from "@/utils/waitTime";
 import styles from "./conversationQueue.module.scss";
@@ -36,7 +36,7 @@ interface ConversationQueueProps {
 
 /**
  * Left panel. Always dark, whatever the page theme.
- * Visitors are anonymous here: we show the website and the message, never a name.
+ * Visitors are anonymous here: we show the website, the visitor's language and the message, never a name.
  * Rows turn amber / orange / red the longer a customer has been waiting.
  */
 const ConversationQueue = ({
@@ -115,6 +115,7 @@ const ConversationQueue = ({
             const peeking = thread.id === peekId;
             const fromAgent = last?.sender === "agent";
             const firstLine = last?.text.split("\n")[0];
+            const language = langName(thread.lang);
 
             return (
               <li
@@ -131,7 +132,7 @@ const ConversationQueue = ({
                   disabled={full}
                   title={full ? "All chat slots are in use. Resolve or transfer a chat first." : undefined}
                   onClick={() => onOpenThread(thread.id)}
-                  aria-label={`Pick up chat from ${thread.site}${thread.unread ? `, ${thread.unread} unread` : ""
+                  aria-label={`Pick up chat from ${thread.site}${language ? `, ${language}` : ""}${thread.unread ? `, ${thread.unread} unread` : ""
                     }${level > 0
                       ? `, waiting over ${WAIT_THRESHOLDS_SEC[level - 1]} seconds`
                       : ""
@@ -139,7 +140,14 @@ const ConversationQueue = ({
                 >
                   <Avatar name={thread.site} />
                   <span className={styles.body}>
-                    <span className={styles.site}>{thread.site}</span>
+                    <span className={styles.site}>
+                      {thread.site}
+                      {thread.lang && (
+                        <span className={styles.lang} title={`Visitor's language: ${language}`}>
+                          {langCode(thread.lang)}
+                        </span>
+                      )}
+                    </span>
                     <span className={styles.preview}>
                       {fromAgent ? `You: ${firstLine}` : firstLine}
                     </span>

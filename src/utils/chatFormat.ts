@@ -69,3 +69,16 @@ export const lastCustomerActivityOf = (thread: ChatThread): number => {
   }
   return 0;
 };
+
+/** "hi-IN" -> "HI". Empty when unknown. */
+export const langCode = (lang?: string): string => (lang ? lang.split("-")[0].toUpperCase() : "");
+
+/** "hi-IN" -> "Hindi (India)". Falls back to the raw tag. */
+export const langName = (lang?: string): string | undefined => {
+  if (!lang) return undefined;
+  try {
+    return new Intl.DisplayNames(["en"], { type: "language" }).of(lang) ?? lang;
+  } catch {
+    return lang;
+  }
+};
