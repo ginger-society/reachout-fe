@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useContext, useState } from "react";
+import { AuthContext, AuthContextInterface } from "@ginger-society/ginger-ui";
 import ChatPanel from "@/components/organisms/ChatPanel/ChatPanel";
 import ConversationQueue from "@/components/organisms/ConversationQueue/ConversationQueue";
 import PeekPanel from "@/components/organisms/PeekPanel/PeekPanel";
 import { useChatDesk } from "@/hooks/useChatDesk";
-import { currentAgent, teammates } from "@/mocks/agents";
+import { currentAgent, mockAvatarFor, teammates } from "@/mocks/agents";
 import { quickReplies } from "@/mocks/quickReplies";
 import { AgentProfile } from "@/types/chat";
-import { AgentIdentity, loadIdentity } from "@/utils/agentAuth";
 import { PeekAnchor, PeekMode } from "@/utils/peek";
+import { ValidateTokenResponse } from "@/services/IAMService_client";
 import styles from "./supportDashboard.module.scss";
 
 interface PeekState {
@@ -16,14 +17,21 @@ interface PeekState {
   anchor: PeekAnchor;
 }
 
-const Desk = ({ identity }: { identity: AgentIdentity }) => {
-  const desk = useChatDesk({ agentId: identity.agentId });
+/** Display name of the signed-in user: same rule as the header. */
+const nameOf = (user: ValidateTokenResponse) =>
+  [user.firstName, user.lastName].filter(Boolean).join(" ") || user.sub.split("@")[0];
+
+const Desk = ({ user }: { user: ValidateTokenResponse }) => {
+  const agentId = Number(user.userId); // the backend keys agents by this numeric id
+  const name = nameOf(user);
+  // name + picture are what the visitor sees in the widget once this agent takes their chat
+  const desk = useChatDesk({ agentId, profile: { name, avatarUrl: mockAvatarFor(user.sub) } });
   const [peek, setPeek] = useState<PeekState | null>(null);
 
   const agent: AgentProfile = {
-    id: String(identity.agentId),
-    name: identity.name,
-    email: identity.email,
+    id: String(agentId),
+    name,
+    email: user.sub,
     color: currentAgent.color,
     status: desk.status,
     sites: [],
@@ -158,32 +166,28 @@ const Desk = ({ identity }: { identity: AgentIdentity }) => {
   );
 };
 
-/** Reads the signed-in agent from the access token, then mounts the desk. */
+/** The signed-in agent comes from AuthContext (the validate-token response): no token decoding here. */
 const SupportDashboardPage = () => {
-  const [identity, setIdentity] = useState<AgentIdentity | null | undefined>(undefined);
+  const { user } = useContext<AuthContextInterface<ValidateTokenResponse>>(AuthContext);
 
-  useEffect(() => {
-    void loadIdentity().then(setIdentity);
-  }, []);
-
-  if (identity === undefined) {
+  if (!user) {
     return (
       <div className={styles.root}>
         <div className={styles.empty}><strong>Loading…</strong></div>
       </div>
     );
   }
-  if (identity === null) {
+  if (!Number.isSafeInteger(Number(user.userId))) {
     return (
       <div className={styles.root}>
         <div className={styles.empty}>
           <strong>Can't identify you</strong>
-          <span>No access token was found, or its user_id claim is not a numeric agent id.</span>
+          <span>Your user id is not a numeric agent id.</span>
         </div>
       </div>
     );
   }
-  return <Desk identity={identity} />;
+  return <Desk user={user} />;
 };
 
 export default SupportDashboardPage;

@@ -11,6 +11,7 @@ import { ValidateTokenResponse } from "./services/IAMService_client";
 import { IAMService } from "./services";
 import { GINGER_SOCIETY_IAM_FRONTEND_USERS, GINGER_SOCIETY_NOTIFICATIONSERVICE_WS } from "./shared/references";
 import { useContext } from "react";
+import { AGENT_CHANNEL_PREFIX } from "./utils/chatApi";
 
 const rootElement = document.querySelector('[data-js="root"]') as HTMLElement;
 
@@ -32,7 +33,7 @@ const App = () => {
 
   return <>
     {/* TODO: remove the user prop after testing as its marked optional in the latest release of ginger UI */}
-    <NotificationProvider url={GINGER_SOCIETY_NOTIFICATIONSERVICE_WS()} channelPrefix={`reachout`} user={user}>
+    <NotificationProvider url={GINGER_SOCIETY_NOTIFICATIONSERVICE_WS()} channelPrefix={AGENT_CHANNEL_PREFIX} user={user}>
       <PermissionProvider checkPermission={checkPermission}>
         <SnackbarProvider>
           <RouterProvider router={router} />
@@ -64,7 +65,7 @@ const init = async () => {
         window.location.href = `${GINGER_SOCIETY_IAM_FRONTEND_USERS()}#reachout/login?returnUrl=${router.state.location.pathname}`
       }
       postLoginNavigate={() =>
-        router.navigate("/support")
+        router.navigate("/example")
       }
     >
       <App />

@@ -37,3 +37,11 @@ export const teammates: AgentProfile[] = [
     sites: ["abc.com"],
   },
 ];
+
+/**
+ * MOCK profile picture for the signed-in agent. It is sent to the backend when the agent takes a chat, so the
+ * visitor sees it in the widget header. Replace with the agent's real picture once IAM exposes one.
+ * Seeded by the token subject, so the same agent always gets the same picture.
+ */
+export const mockAvatarFor = (sub: string): string =>
+  `https://api.dicebear.com/9.x/thumbs/svg?seed=${encodeURIComponent(sub)}`;

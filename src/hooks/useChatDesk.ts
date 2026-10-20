@@ -11,6 +11,7 @@ import {
   toMessage,
   toThread,
   visitorIdOf,
+  type AgentCardInput,
 } from "@/utils/chatApi";
 import { lastCustomerActivityOf } from "@/utils/chatFormat";
 import { connectSse } from "@/utils/sse";
@@ -192,6 +193,8 @@ interface Options {
    */
   orgs?: string[];
   initialStatus?: AgentStatus;
+  /** Name and picture the visitor sees once you take their chat (sent with POST /assign). */
+  profile: AgentCardInput;
 }
 
 /**
@@ -203,8 +206,11 @@ interface Options {
  *
  * Visitor online status comes from the presence service (channel reachout_visitor_<visitorId>),
  * polled every PRESENCE_POLL_MS for every queued / open thread that has a visitor id.
+ *
+ * The other direction needs nothing here: picking a chat up sends `profile` with POST /assign, the backend stores it and
+ * streams it to the visitor together with this agent's presence channel (support_<sub>, see AGENT_CHANNEL_PREFIX).
  */
-export function useChatDesk({ agentId, orgs = [], initialStatus = "available" }: Options) {
+export function useChatDesk({ agentId, orgs = [], initialStatus = "available", profile }: Options) {
   const [state, dispatch] = useReducer(reducer, {} as State);
   const [filterSites, setFilterSites] = useState<string[]>([]);
   const [status, setStatus] = useState<AgentStatus>(initialStatus);
@@ -214,6 +220,8 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available" }:
   const stateRef = useRef(state);
   stateRef.current = state;
   const assigning = useRef(new Set<string>());
+  const profileRef = useRef(profile); // read at pick-up time, so openThread keeps a stable identity
+  profileRef.current = profile;
   const orgsKey = orgs.join(",");
 
   // ---- full thread fetch (a message arrived for a thread we have no history for) ----
@@ -388,7 +396,7 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available" }:
 
     assigning.current.add(id);
     try {
-      dispatch({ type: "put", thread: await agentApi.assign(id) });
+      dispatch({ type: "put", thread: await agentApi.assign(id, profileRef.current) });
     } catch (e) {
       const code = statusOf(e);
       if (code === 409) {

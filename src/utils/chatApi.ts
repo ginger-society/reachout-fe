@@ -2,6 +2,19 @@ import { GingerPresence, ReachoutPostmanService } from "@/services";
 import { GINGER_SOCIETY_GINGERREACHOUTPOSTMAN_SERVICE } from "@/shared/references";
 import { ChatMessage, ChatThread, ThreadState } from "@/types/chat";
 
+/**
+ * Presence prefix of the agent's own socket, so their presence channel is support_<sub>. The backend puts that channel
+ * in the `assigned` event and the visitor widget asks the presence service whether it is online.
+ * Must match AGENT_PRESENCE_PREFIX in the backend; main.tsx uses it as the NotificationProvider channelPrefix.
+ */
+export const AGENT_CHANNEL_PREFIX = "support";
+
+/** What the visitor sees once the agent takes their chat. The agent id and channel are derived server-side from the token. */
+export interface AgentCardInput {
+  name: string;
+  avatarUrl?: string;
+}
+
 export const baseUrl = () => GINGER_SOCIETY_GINGERREACHOUTPOSTMAN_SERVICE().replace(/\/+$/, "");
 
 /** HTTP status of a failed generated-client call (ResponseError has it on `.response`); undefined = network error. */
@@ -74,9 +87,15 @@ const assignedOf = (raw: any): number | null => {
 };
 
 export const agentApi = {
-  /** Takes the thread. Throws with status 409 if someone else got it first. */
-  assign: async (threadId: string): Promise<ChatThread> => {
-    const raw = await ReachoutPostmanService.routesAgentAssignThread({ threadId });
+  /**
+   * Takes the thread and tells the visitor who you are (name + picture). Throws with status 409 if someone else got it first.
+   * The visitor learns your presence channel from the backend (the `assigned` event), not from here.
+   */
+  assign: async (threadId: string, profile: AgentCardInput): Promise<ChatThread> => {
+    const raw = await ReachoutPostmanService.routesAgentAssignThread({
+      threadId,
+      assignRequest: { name: profile.name, avatarUrl: profile.avatarUrl },
+    });
     return { ...toThread(raw, "open"), openedAt: Date.now() };
   },
 
