@@ -8,7 +8,7 @@ import "../node_modules/@ginger-society/ginger-ui/dist/esm/index.css";
 import router from "./shared/router";
 import { SnackbarProvider, NotificationProvider, AuthContext, AuthContextInterface, AuthProvider, PermissionProvider } from "@ginger-society/ginger-ui";
 import { ValidateTokenResponse } from "./services/IAMService_client";
-import { IAMService } from "./services";
+import { GingerPresence, IAMService } from "./services";
 import { GINGER_SOCIETY_IAM_FRONTEND_USERS, GINGER_SOCIETY_NOTIFICATIONSERVICE_WS } from "./shared/references";
 import { useContext } from "react";
 import { AGENT_CHANNEL_PREFIX } from "./utils/chatApi";
@@ -23,6 +23,11 @@ const validateToken = async (): Promise<ValidateTokenResponse> => {
   return IAMService.identityValidateToken();
 };
 
+const heartbeat = {
+  getPresenceChannel: async () => (await GingerPresence.routesIndex()).message,
+  capabilities: ["agent"], // check what the presence service expects
+};
+
 const checkPermission = async (groupId: string) => {
   const data = await IAMService.identityIsMember({ groupParam: groupId })
   return { isAdmin: data.isOwner, isMember: data.isMember }
@@ -33,7 +38,7 @@ const App = () => {
 
   return <>
     {/* TODO: remove the user prop after testing as its marked optional in the latest release of ginger UI */}
-    <NotificationProvider url={GINGER_SOCIETY_NOTIFICATIONSERVICE_WS()} channelPrefix={AGENT_CHANNEL_PREFIX} user={user}>
+    <NotificationProvider url={GINGER_SOCIETY_NOTIFICATIONSERVICE_WS()} channelPrefix={AGENT_CHANNEL_PREFIX} user={user} heartbeat={heartbeat}>
       <PermissionProvider checkPermission={checkPermission}>
         <SnackbarProvider>
           <RouterProvider router={router} />
