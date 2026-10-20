@@ -13,15 +13,20 @@ import CustomerDetailsModal from "./CustomerDetailsModal";
 import MessageBody from "./MessageBody";
 import TransferChatModal from "./TransferChatModal";
 import styles from "./chatPanel.module.scss";
+import live from "./liveInfo.module.scss";
 
 const isMac =
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform);
+
+const AWAY_COLOR = "#f59e0b";
 
 interface ChatPanelProps {
   thread: ChatThread;
   /** agents this chat can be transferred to */
   agents: AgentProfile[];
   onSend: (id: string, text: string) => void;
+  /** the agent is typing (true) or stopped / sent (false): the visitor sees a typing indicator */
+  onTyping: (id: string, typing: boolean) => void;
   onUpdateCustomer: (id: string, details: CustomerDetails) => void;
   onTransfer: (id: string, agentId: string) => void;
   onResolve: (id: string) => void;
@@ -31,6 +36,7 @@ const ChatPanel = ({
   thread,
   agents,
   onSend,
+  onTyping,
   onUpdateCustomer,
   onTransfer,
   onResolve,
@@ -44,12 +50,15 @@ const ChatPanel = ({
   const menuRef = useDismissable<HTMLDivElement>(menuOpen, () => setMenuOpen(false));
 
   const name = displayName(thread);
+  const presence = thread.presence ?? (thread.online ? "online" : "offline");
+  const presenceLabel = presence === "online" ? "Online" : presence === "away" ? "Away" : "Offline";
+  const tabs = thread.tabCount ?? 0;
 
-  // Jump to the newest message (or the typing indicator)
+  // Jump to the newest message (or the typing indicator / live draft)
   useEffect(() => {
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [thread.messages.length, thread.typing]);
+  }, [thread.messages.length, thread.typing, thread.draft]);
 
   // Ready to type as soon as the chat lands on the board
   useEffect(() => {
@@ -68,6 +77,7 @@ const ChatPanel = ({
     const text = draft.trim();
     if (!text) return;
     onSend(thread.id, text);
+    onTyping(thread.id, false);
     setDraft("");
   };
 
@@ -92,11 +102,16 @@ const ChatPanel = ({
         <div className={styles.who}>
           <div className={styles.nameRow}>
             <span
-              className={[styles.presence, thread.online ? styles.presenceOn : ""].join(" ")}
+              className={[styles.presence, presence === "online" ? styles.presenceOn : ""].join(" ")}
+              style={presence === "away" ? { background: AWAY_COLOR } : undefined}
               role="img"
-              aria-label={thread.online ? "Online" : "Offline"}
+              aria-label={presenceLabel}
             />
             <ThemedText className={styles.name}>{name}</ThemedText>
+            <span className={live.statusLabel}>
+              {presenceLabel}
+              {tabs > 1 ? ` · ${tabs} tabs` : ""}
+            </span>
           </div>
           {isHttpUrl(thread.pageUrl) ? (
             <a
@@ -104,14 +119,14 @@ const ChatPanel = ({
               href={thread.pageUrl}
               target="_blank"
               rel="noopener noreferrer"
-              title="Open this page in a new tab"
+              title="Open the page the visitor is on, in a new tab"
               aria-label={`Open ${prettyUrl(thread.pageUrl)} in a new tab`}
             >
               <span className={styles.urlText}>{prettyUrl(thread.pageUrl)}</span>
               <FaExternalLinkAlt className={styles.urlIcon} aria-hidden="true" />
             </a>
           ) : (
-            <span className={styles.urlPlain}>{thread.pageUrl}</span>
+            <span className={styles.urlPlain}>{thread.pageUrl || "Page not reported yet"}</span>
           )}
         </div>
 
@@ -183,15 +198,23 @@ const ChatPanel = ({
           );
         })}
 
-        {thread.typing && (
-          <div className={styles.row}>
-            <div className={[styles.bubble, styles.bubbleCustomer, styles.typing].join(" ")}>
-              <span className={styles.srOnly}>{name} is typing</span>
-              <span className={styles.dot} />
-              <span className={styles.dot} />
-              <span className={styles.dot} />
-            </div>
+        {/* What the visitor is typing right now: plain live text, no bubble */}
+        {thread.draft ? (
+          <div className={live.draftRow}>
+            <span className={live.draftLabel}>{name} is typing…</span>
+            <ThemedText className={live.draftText}>{thread.draft}</ThemedText>
           </div>
+        ) : (
+          thread.typing && (
+            <div className={styles.row}>
+              <div className={[styles.bubble, styles.bubbleCustomer, styles.typing].join(" ")}>
+                <span className={styles.srOnly}>{name} is typing</span>
+                <span className={styles.dot} />
+                <span className={styles.dot} />
+                <span className={styles.dot} />
+              </div>
+            </div>
+          )
         )}
       </div>
 
@@ -203,7 +226,10 @@ const ChatPanel = ({
           value={draft}
           placeholder="Type a message..."
           aria-label={`Message ${name}`}
-          onChange={(e) => setDraft(e.target.value)}
+          onChange={(e) => {
+            setDraft(e.target.value);
+            onTyping(thread.id, e.target.value.trim().length > 0);
+          }}
           onKeyDown={onKeyDown}
         />
         <div className={styles.composerFooter}>

@@ -108,6 +108,7 @@ const Desk = ({ user }: { user: ValidateTokenResponse }) => {
               thread={thread}
               agents={teammates /* TODO: real agent list */}
               onSend={desk.sendMessage}
+              onTyping={desk.setAgentTyping}
               onUpdateCustomer={desk.updateCustomer}
               onTransfer={desk.transferThread}
               onResolve={desk.resolveThread}

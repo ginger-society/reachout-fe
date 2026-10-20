@@ -26,6 +26,8 @@ const validateToken = async (): Promise<ValidateTokenResponse> => {
 const heartbeat = {
   getPresenceChannel: async () => (await GingerPresence.routesIndex()).message,
   capabilities: ["agent"], // check what the presence service expects
+  // keep beating from a hidden tab: "away" is reported by the useChatDesk signals, "offline" means really gone
+  pauseWhenHidden: false,
 };
 
 const checkPermission = async (groupId: string) => {

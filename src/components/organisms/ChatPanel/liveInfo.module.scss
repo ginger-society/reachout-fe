@@ -1,0 +1,53 @@
+.statusLabel {
+  margin-left: 6px;
+  font-size: 12px;
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.urlNote {
+  margin-left: 6px;
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+// The visitor's unsent text: live, no bubble, no border.
+.draftRow {
+  align-self: flex-start;
+  max-width: 80%;
+  padding: 2px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.draftLabel {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.draftText {
+  font-size: 14px;
+  line-height: 1.4;
+  font-style: italic;
+  opacity: 0.85;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+
+  &::after {
+    content: "";
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    background: currentColor;
+    animation: caret 1s steps(1) infinite;
+  }
+}
+
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}

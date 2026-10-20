@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { NotificationContext } from "@ginger-society/ginger-ui";
 import type { DropdownOption } from "@/components/atoms/MultiSelectDropdown/MultiSelectDropdown";
+import { useNow } from "@/hooks/useNow";
 import { AgentStatus, ChatMessage, ChatThread, CustomerDetails } from "@/types/chat";
 import { getAuthHeader } from "@/utils/agentAuth";
 import {
@@ -10,10 +12,20 @@ import {
   statusOf,
   toMessage,
   toThread,
+  visitorChannel,
   visitorIdOf,
   type AgentCardInput,
 } from "@/utils/chatApi";
 import { lastCustomerActivityOf } from "@/utils/chatFormat";
+import {
+  RPC_WATCH_VISITOR,
+  STATE_PUSH_MS,
+  TYPING_RESEND_MS,
+  TYPING_STOP_MS,
+  WATCH_REFRESH_MS,
+  type VisitorTabSignal,
+} from "@/utils/signals";
+import { applyLive, emptyLive, withService, withTabClosed, withTabSignal } from "@/utils/visitorLive";
 import { connectSse } from "@/utils/sse";
 
 /** An agent can have at most this many chats open at once. */
@@ -46,7 +58,9 @@ type Action =
   | { type: "send_start"; threadId: string; message: ChatMessage }
   | { type: "send_ok"; threadId: string; message: ChatMessage }
   | { type: "send_failed"; threadId: string; clientId: string }
-  | { type: "presence"; online: Record<string, boolean> } // keyed by thread id
+  | { type: "presence"; online: Record<string, boolean>; now: number } // presence service verdicts, keyed by thread id
+  | { type: "live_tab"; threadId: string; tabId: string; signal: VisitorTabSignal; now: number }
+  | { type: "live_tab_closed"; threadId: string; tabId: string; now: number }
   | { type: "patch"; threadId: string; patch: Partial<ChatThread> };
 
 /** Union by message id (server copy wins, clears "sending"), ordered by server seq; unconfirmed ones stay last. */
@@ -157,15 +171,28 @@ function reducer(s: State, a: Action): State {
       return { ...s, [a.threadId]: { ...t, messages } };
     }
     case "presence": {
-      // Only touch threads whose status actually changed; same state object = no re-render.
+      // The presence service only says "reachable or not". Online / away is derived later (applyLive).
+      // Only touch threads whose verdict changed (or is online, which refreshes "last seen").
       let next: State | null = null;
       for (const [id, online] of Object.entries(a.online)) {
         const t = s[id];
-        if (!t || t.online === online) continue;
+        if (!t) continue;
+        const live = t.live ?? emptyLive();
+        if (live.serviceOnline === online && !online) continue;
         if (!next) next = { ...s };
-        next[id] = { ...t, online };
+        next[id] = { ...t, live: withService(live, online, a.now) };
       }
       return next ?? s;
+    }
+    case "live_tab": {
+      const t = s[a.threadId];
+      if (!t) return s;
+      return { ...s, [a.threadId]: { ...t, live: withTabSignal(t.live ?? emptyLive(), a.tabId, a.signal, a.now) } };
+    }
+    case "live_tab_closed": {
+      const t = s[a.threadId];
+      if (!t) return s;
+      return { ...s, [a.threadId]: { ...t, live: withTabClosed(t.live ?? emptyLive(), a.tabId, a.now) } };
     }
     case "patch": {
       const t = s[a.threadId];
@@ -205,10 +232,13 @@ interface Options {
  *   resolved               -> closed on the backend (POST /threads/<id>/resolve), the visitor is asked for a rating
  *   transferred            -> hidden locally (NO backend endpoint yet, see TODOs)
  *
- * Visitor online status comes from the presence service (channel reachout_visitor_<visitorId>),
- * polled every PRESENCE_POLL_MS for every queued / open thread that has a visitor id.
+ * Visitor reachability comes from the presence service (channel reachout_visitor_<visitorId>), polled every
+ * PRESENCE_POLL_MS. Everything live comes over the notification socket (NotificationContext):
+ *   - we call RPC `watch_visitor` on each queued / open visitor every WATCH_REFRESH_MS; the visitor then pushes its
+ *     page URL, tab in view and (for open chats) typing + draft. Several tabs are merged in utils/visitorLive.ts.
+ *   - we publish agent_typing / agent_state / agent_bye to the visitors of the chats we have open.
  *
- * The other direction needs nothing here: picking a chat up sends `profile` with POST /assign, the backend stores it and
+ * The other direction of the chat needs nothing here: picking a chat up sends `profile` with POST /assign, the backend stores it and
  * streams it to the visitor together with this agent's presence channel (support_<sub>, see AGENT_CHANNEL_PREFIX).
  */
 export function useChatDesk({ agentId, orgs = [], initialStatus = "available", profile }: Options) {
@@ -217,6 +247,8 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
   const [status, setStatus] = useState<AgentStatus>(initialStatus);
   const [connection, setConnection] = useState<Connection>("connecting");
   const [error, setError] = useState<string | null>(null);
+  const wamp = useContext(NotificationContext);
+  const now = useNow(2000);
 
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -315,9 +347,10 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
   }, [agentId, orgsKey, hydrate]);
 
   // ---- selectors ----
-  const threads = useMemo(() => Object.values(state), [state]);
+  // The raw state holds time-based live data; `now` (2 s tick) re-derives presence, typing and the draft expiry.
+  const threads = useMemo(() => Object.values(state).map((t) => applyLive(t, now)), [state, now]);
 
-  // "threadId|visitorId" pairs for every queued / open thread that has a visitor id.
+  // "threadId|visitorId" pairs for every queued / open thread (visitor id falls back to the thread id).
   // Sorted so the key is stable and the poll only restarts when the set really changes.
   const trackedKey = useMemo(
     () =>
@@ -329,7 +362,19 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
     [threads]
   );
 
-  // ---- visitor presence: poll now, whenever the set of threads changes, and on an interval ----
+  // Same set plus the level of detail: queued chats get the basics (page, tab in view),
+  // open chats also get typing and the live draft.
+  const watchKey = useMemo(
+    () =>
+      threads
+        .filter((t) => t.state === "queued" || t.state === "open")
+        .map((t) => `${t.id}|${t.visitorId ?? t.id}|${t.state === "open" ? "full" : "basic"}`)
+        .sort()
+        .join(","),
+    [threads]
+  );
+
+  // ---- visitor presence service: poll now, whenever the set of threads changes, and on an interval ----
   useEffect(() => {
     if (!trackedKey) return;
     const targets = trackedKey.split(",").map((pair) => {
@@ -344,7 +389,7 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
       busy = true;
       try {
         const online = await presenceApi.onlineMap(targets);
-        if (!cancelled) dispatch({ type: "presence", online });
+        if (!cancelled) dispatch({ type: "presence", online, now: Date.now() });
       } catch {
         /* keep the last known status; the next tick tries again */
       } finally {
@@ -359,6 +404,130 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
       window.clearInterval(timer);
     };
   }, [trackedKey]);
+
+  // ---- live: ask every visitor to stream its state to us (RPC). The watch lapses on its own, so we renew it. ----
+  const { connected, channel, call, publish, subscribe } = wamp;
+  useEffect(() => {
+    if (!connected || !watchKey) return;
+    const targets = watchKey.split(",").map((entry) => {
+      const [threadId, visitorId, level] = entry.split("|");
+      return { threadId, visitorId, level };
+    });
+    const run = () => {
+      for (const x of targets) {
+        call(visitorChannel(x.visitorId), RPC_WATCH_VISITOR, [], { level: x.level, thread: x.threadId }, 5000).catch(
+          () => undefined // visitor offline or not listening: the next round tries again
+        );
+      }
+    };
+    run();
+    const timer = window.setInterval(run, WATCH_REFRESH_MS);
+    return () => window.clearInterval(timer);
+  }, [connected, call, watchKey]);
+
+  // ---- live: what the visitors push to us (URL, tab in view, typing, draft) ----
+  useEffect(() => {
+    return subscribe("*", (ev) => {
+      const k = ev.kwargs;
+      if (!k || typeof k.type !== "string" || !k.type.startsWith("visitor_")) return;
+      // the broker stamps who really sent it
+      if (ev.caller?.kind !== "visitor") return;
+      const tabId = typeof k.tab === "string" ? k.tab : null;
+      const threadId = typeof k.thread === "string" ? k.thread : null;
+      if (!tabId || !threadId) return;
+      const thread = stateRef.current[threadId];
+      if (!thread) return;
+      // a visitor may only speak for its own thread
+      if (thread.visitorId && ev.caller.sub !== thread.visitorId) return;
+
+      if (k.type === "visitor_tab") {
+        dispatch({ type: "live_tab", threadId, tabId, signal: k as unknown as VisitorTabSignal, now: Date.now() });
+      } else if (k.type === "visitor_tab_closed") {
+        dispatch({ type: "live_tab_closed", threadId, tabId, now: Date.now() });
+      }
+    });
+  }, [subscribe]);
+
+  // ---- live: tell the visitors of our open chats whether this tab is in view, and say goodbye on exit ----
+  const openVisitorKey = useMemo(
+    () =>
+      threads
+        .filter((t) => t.state === "open")
+        .map((t) => `${t.id}|${t.visitorId ?? t.id}`)
+        .sort()
+        .join(","),
+    [threads]
+  );
+
+  const sendToOpenVisitors = useCallback(
+    (payload: Record<string, unknown>) => {
+      if (!channel) return;
+      for (const t of Object.values(stateRef.current)) {
+        if (t.state !== "open") continue;
+        publish(visitorChannel(t.visitorId ?? t.id), { ...payload, thread: t.id, from: channel }).catch(() => undefined);
+      }
+    },
+    [channel, publish]
+  );
+
+  useEffect(() => {
+    if (!connected || !channel || !openVisitorKey) return;
+    const pushState = () => sendToOpenVisitors({ type: "agent_state", visible: document.visibilityState === "visible" });
+    const bye = () => sendToOpenVisitors({ type: "agent_bye" });
+    pushState();
+    const timer = window.setInterval(pushState, STATE_PUSH_MS);
+    document.addEventListener("visibilitychange", pushState);
+    window.addEventListener("pagehide", bye);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", pushState);
+      window.removeEventListener("pagehide", bye);
+    };
+  }, [connected, channel, openVisitorKey, sendToOpenVisitors]);
+
+  // ---- live: the agent is typing a reply ----
+  const typingRef = useRef(new Map<string, { timer?: number; lastSent: number; on: boolean }>());
+
+  const sendTyping = useCallback(
+    (id: string, typing: boolean) => {
+      const t = stateRef.current[id];
+      if (!t || !channel) return;
+      publish(visitorChannel(t.visitorId ?? t.id), { type: "agent_typing", typing, thread: id, from: channel }).catch(
+        () => undefined
+      );
+    },
+    [channel, publish]
+  );
+
+  /** Call on every change of the reply box. Throttled; goes quiet by itself after TYPING_STOP_MS. */
+  const setAgentTyping = useCallback(
+    (id: string, active: boolean) => {
+      const entry = typingRef.current.get(id) ?? { lastSent: 0, on: false };
+      window.clearTimeout(entry.timer);
+      if (active) {
+        const t = Date.now();
+        if (!entry.on || t - entry.lastSent >= TYPING_RESEND_MS) {
+          sendTyping(id, true);
+          entry.lastSent = t;
+          entry.on = true;
+        }
+        entry.timer = window.setTimeout(() => {
+          entry.on = false;
+          sendTyping(id, false);
+        }, TYPING_STOP_MS);
+      } else if (entry.on) {
+        entry.on = false;
+        sendTyping(id, false);
+      }
+      typingRef.current.set(id, entry);
+    },
+    [sendTyping]
+  );
+
+  useEffect(() => {
+    const map = typingRef.current;
+    return () => map.forEach((e) => window.clearTimeout(e.timer));
+  }, []);
 
   const queue = useMemo(
     () =>
@@ -509,6 +678,8 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
     updateCustomer,
     markRead,
     sendMessage,
+    /** tell the visitor the agent is typing in this chat (call on every change of the reply box) */
+    setAgentTyping,
     connection,
     error,
     dismissError: () => setError(null),
