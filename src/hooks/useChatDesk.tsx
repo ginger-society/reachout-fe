@@ -46,6 +46,25 @@ const newId = () =>
     ? crypto.randomUUID()
     : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
 
+// CHANGED: id of THIS browser tab / login of the agent. The same agent may be signed in in several places at once;
+// the visitor widget merges them by this id (visible if ANY is visible). Without it every login shares one slot
+// on the visitor side and their agent_state signals overwrite each other (online <-> away flipping).
+// Kept in sessionStorage so a reload of the dashboard reuses the id instead of leaving a stale one behind.
+const AGENT_TAB_KEY = "ginger_agent_tab";
+let agentTabId: string | null = null;
+const getAgentTabId = (): string => {
+  if (agentTabId) return agentTabId;
+  try {
+    const saved = sessionStorage.getItem(AGENT_TAB_KEY);
+    if (saved) return (agentTabId = saved);
+    const id = newId();
+    sessionStorage.setItem(AGENT_TAB_KEY, id);
+    return (agentTabId = id);
+  } catch {
+    return (agentTabId = newId()); // storage blocked: one id for the lifetime of this page
+  }
+};
+
 // ───────────────────────── state ─────────────────────────
 
 type State = Record<string, ChatThread>;
@@ -323,7 +342,8 @@ interface Options {
  * PRESENCE_POLL_MS. Everything live comes over the notification socket (NotificationContext):
  *   - we call RPC `watch_visitor` on each queued / open visitor every WATCH_REFRESH_MS; the visitor then pushes its
  *     page URL, tab in view and (for open chats) typing + draft. Several tabs are merged in utils/visitorLive.ts.
- *   - we publish agent_typing / agent_state / agent_bye to the visitors of the chats we have open.
+ *   - we publish agent_typing / agent_state / agent_bye to the visitors of the chats we have open. Each carries
+ *     this browser tab's `tab` id, so a visitor can merge several logins of the same agent.
  *
  * The visitor's page language (`lang`) is a thread attribute: it arrives with the thread payload (snapshots, GET /threads/<id>)
  * and with the `thread_new` / `message` events, so no live signal is needed for it.
@@ -622,7 +642,10 @@ export function useChatDesk({ agentId, orgs = [], profile }: Options) {
       if (!channel) return;
       for (const t of Object.values(stateRef.current)) {
         if (t.state !== "open" || t.visitorClosedAt) continue;
-        publish(visitorChannel(t.visitorId ?? t.id), { ...payload, thread: t.id, from: channel }).catch(() => undefined);
+        // CHANGED: `tab` identifies this login, so the visitor can merge several of them
+        publish(visitorChannel(t.visitorId ?? t.id), { ...payload, thread: t.id, from: channel, tab: getAgentTabId() }).catch(
+          () => undefined
+        );
       }
     },
     [channel, publish]
@@ -650,9 +673,14 @@ export function useChatDesk({ agentId, orgs = [], profile }: Options) {
     (id: string, typing: boolean) => {
       const t = stateRef.current[id];
       if (!t || !channel || t.visitorClosedAt) return;
-      publish(visitorChannel(t.visitorId ?? t.id), { type: "agent_typing", typing, thread: id, from: channel }).catch(
-        () => undefined
-      );
+      // CHANGED: include this login's tab id
+      publish(visitorChannel(t.visitorId ?? t.id), {
+        type: "agent_typing",
+        typing,
+        thread: id,
+        from: channel,
+        tab: getAgentTabId(),
+      }).catch(() => undefined);
     },
     [channel, publish]
   );

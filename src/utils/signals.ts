@@ -28,6 +28,7 @@ export const STATE_PUSH_MS = 5_000;
 // ---- visitor -> agent (published to the watcher's channel, kwargs.type) ----
 export interface VisitorTabSignal {
   type: 'visitor_tab';
+  /** stable per browser tab (kept in sessionStorage), so page navigations in the same tab do not create new tabs */
   tab: string;
   thread?: string;
   url: string;
@@ -50,16 +51,25 @@ export interface AgentTypingSignal {
   thread: string;
   /** the agent's own channel; the visitor only trusts the channel the backend assigned */
   from: string;
+  /** id of the agent's browser tab / login (optional) */
+  tab?: string;
 }
 export interface AgentStateSignal {
   type: 'agent_state';
   visible: boolean;
   from: string;
   thread?: string;
+  /**
+   * id of the agent's browser tab / login. SEND IT: the visitor merges several agent tabs
+   * (visible if ANY tab is visible). Without it all agent tabs share one slot and overwrite each other.
+   */
+  tab?: string;
 }
 export interface AgentByeSignal {
   type: 'agent_bye';
   from: string;
+  /** which agent tab said goodbye. The agent only counts as gone when no tab is left. */
+  tab?: string;
 }
 
 export interface PresenceInput {
