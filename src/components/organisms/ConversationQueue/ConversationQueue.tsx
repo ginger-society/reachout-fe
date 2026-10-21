@@ -68,6 +68,8 @@ const ConversationQueue = ({
           options={siteOptions}
           value={siteValue}
           onChange={onSiteChange}
+          placeholder="All websites"
+          theme="dark"
         />
       </div>
 
