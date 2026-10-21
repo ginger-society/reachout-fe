@@ -235,7 +235,7 @@ const ChatPanel = ({
                     className={styles.menuItem}
                     onClick={() => pickMenuItem("transfer")}
                   >
-                    Transfer to another agent
+                    Transfer this thread
                   </button>
                   <button
                     type="button"

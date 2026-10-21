@@ -58,6 +58,8 @@ type Action =
   | { type: "assigned"; threadId: string; mine: boolean }
   | { type: "remove"; threadId: string }
   | { type: "visitor_closed"; threadId: string; at: number } // the visitor ended the chat (local clock)
+  | { type: "transferred_in"; thread: ChatThread; at: number } // another agent handed us this chat (the server is authoritative)
+  | { type: "transferred_out"; threadId: string; to?: unknown } // we handed it over (echo from another tab of ours)
   | { type: "send_start"; threadId: string; message: ChatMessage }
   | { type: "send_ok"; threadId: string; message: ChatMessage }
   | { type: "send_failed"; threadId: string; clientId: string }
@@ -105,7 +107,21 @@ function reducer(s: State, a: Action): State {
       for (const t of a.threads) {
         const ex = next[t.id];
         if (!ex) next[t.id] = t;
-        else if (!isGone(ex)) {
+        else if (ex.state === "transferred") {
+          // The server lists it as ours again (handed back to us, or we missed the `transferred_in`): revive it.
+          // Resolved / closed threads are never in this snapshot, so "resolved" stays hidden.
+          next[t.id] = {
+            ...ex,
+            state: "open",
+            transferredTo: undefined,
+            openedAt: ex.openedAt ?? t.openedAt ?? Date.now(),
+            unread: 0,
+            lang: t.lang ?? ex.lang,
+            visitorId: t.visitorId ?? ex.visitorId,
+            customer: t.customer,
+            messages: mergeMessages(ex.messages, t.messages),
+          };
+        } else if (!isGone(ex)) {
           next[t.id] = {
             ...ex,
             state: "open",
@@ -157,6 +173,47 @@ function reducer(s: State, a: Action): State {
           customer: a.thread.customer, // the server holds the saved contact card
           unread: a.thread.state === "open" ? 0 : ex.unread,
           messages: mergeMessages(ex.messages, a.thread.messages),
+        },
+      };
+    }
+    case "transferred_in": {
+      // The backend says this chat is ours now. Unlike `put`, this DOES bring back a chat we had earlier
+      // transferred away (it can be handed back to us), because the server is the authority on ownership.
+      const incoming: ChatThread = {
+        ...a.thread,
+        state: "open",
+        openedAt: a.at,
+        unread: 0,
+        transferredTo: undefined,
+      };
+      const ex = s[a.thread.id];
+      if (!ex) return { ...s, [a.thread.id]: incoming };
+      return {
+        ...s,
+        [a.thread.id]: {
+          ...ex,
+          ...incoming,
+          // keep what we already know locally about the visitor's live state
+          live: ex.live,
+          pageUrl: ex.pageUrl || incoming.pageUrl,
+          lang: incoming.lang ?? ex.lang,
+          visitorId: incoming.visitorId ?? ex.visitorId,
+          messages: mergeMessages(ex.messages, incoming.messages),
+        },
+      };
+    }
+    case "transferred_out": {
+      const t = s[a.threadId];
+      if (!t || isGone(t)) return s;
+      return {
+        ...s,
+        [a.threadId]: {
+          ...t,
+          state: "transferred",
+          transferredTo: a.to === undefined || a.to === null ? t.transferredTo : String(a.to),
+          openedAt: undefined,
+          typing: false,
+          draft: "",
         },
       };
     }
@@ -254,8 +311,9 @@ interface Options {
  *   queued      -> unassigned thread, from GET /threads (SSE)         -> left panel
  *   open        -> assigned to this agent, GET /my-threads (SSE)      -> right board (max MAX_OPEN_CHATS)
  *   resolved               -> closed on the backend (POST /threads/<id>/resolve), the visitor is asked for a rating
- *   transferred            -> handed to another agent via agentApi.transfer (placeholder until the backend endpoint
- *                             exists), then hidden locally
+ *   transferred            -> handed to another agent (POST /threads/<id>/transfer), then hidden locally.
+ *                             The other direction arrives on the my-threads stream: `transferred_in` (with the full
+ *                             thread) adds the chat to the board, `transferred_out` hides it in our other tabs.
  *
  * The visitor ending the chat arrives as a `visitor_closed` event: a queued thread leaves the queue at once; an open one
  * gets `visitorClosedAt`, the panel shows a notice with a countdown, and CLOSED_CHAT_LINGER_MS later it is hidden
@@ -305,7 +363,7 @@ export function useChatDesk({ agentId, orgs = [], profile }: Options) {
         if (thread.visitorClosedAt) return; // the visitor already left: nothing to show
         if (assignedAgent === null) dispatch({ type: "put", thread });
         else if (assignedAgent === agentId) {
-          dispatch({ type: "put", thread: { ...thread, state: "open", openedAt: thread.openedAt ?? Date.now(), unread: 0 } });
+          dispatch({ type: "transferred_in", thread: { ...thread, state: "open" }, at: Date.now() });
         }
         // assigned to someone else: not ours to show
       } catch {
@@ -386,6 +444,20 @@ export function useChatDesk({ agentId, orgs = [], profile }: Options) {
         } else if (name === "assigned") {
           dispatch({ type: "assigned", threadId: p.thread_id, mine: true }); // e.g. taken from another tab
           if (!stateRef.current[p.thread_id]) void hydrate(p.thread_id);
+        } else if (name === "transferred_in") {
+          // Another agent handed us this chat. The event carries the full thread, so no fetch is needed.
+          const id: string | undefined = p.thread_id ?? p.thread?.thread_id;
+          if (!id) return;
+          const alreadyOpen = stateRef.current[id]?.state === "open";
+          if (p.thread) {
+            dispatch({ type: "transferred_in", thread: toThread(p.thread, "open"), at: Date.now() });
+          } else {
+            void hydrate(id); // defensive: an event without the thread payload
+          }
+          if (!alreadyOpen) notify("A chat was transferred to you.");
+        } else if (name === "transferred_out") {
+          // We handed this chat over (from this or another tab of ours): take it off the board.
+          dispatch({ type: "transferred_out", threadId: p.thread_id, to: p.to_agent_id });
         } else if (name === "resolved") {
           dispatch({ type: "patch", threadId: p.thread_id, patch: { state: "resolved", openedAt: undefined } }); // e.g. resolved from another tab
         } else if (name === "visitor_closed") {
@@ -746,9 +818,8 @@ export function useChatDesk({ agentId, orgs = [], profile }: Options) {
   }, []);
 
   /**
-   * Hands the chat to another agent, then hides it here. Same pattern as resolveThread: a failed backend call keeps the
-   * chat open. TODO(backend): agentApi.transfer is a placeholder (resolves immediately) until the endpoint exists,
-   * so for now this only hides the chat locally.
+   * Hands the chat to another agent (POST /threads/{id}/transfer), then hides it here. Same pattern as resolveThread:
+   * a failed backend call keeps the chat open. The new owner's board gets it through their `transferred_in` event.
    */
   const transferThread = useCallback(
     async (id: string, targetAgentId: string) => {
