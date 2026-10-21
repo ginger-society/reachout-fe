@@ -254,7 +254,8 @@ interface Options {
  *   queued      -> unassigned thread, from GET /threads (SSE)         -> left panel
  *   open        -> assigned to this agent, GET /my-threads (SSE)      -> right board (max MAX_OPEN_CHATS)
  *   resolved               -> closed on the backend (POST /threads/<id>/resolve), the visitor is asked for a rating
- *   transferred            -> hidden locally (NO backend endpoint yet, see TODOs)
+ *   transferred            -> handed to another agent via agentApi.transfer (placeholder until the backend endpoint
+ *                             exists), then hidden locally
  *
  * The visitor ending the chat arrives as a `visitor_closed` event: a queued thread leaves the queue at once; an open one
  * gets `visitorClosedAt`, the panel shows a notice with a countdown, and CLOSED_CHAT_LINGER_MS later it is hidden
@@ -744,10 +745,32 @@ export function useChatDesk({ agentId, orgs = [], profile }: Options) {
     dispatch({ type: "patch", threadId: id, patch: { state: "resolved", openedAt: undefined } });
   }, []);
 
-  // TODO(backend): no endpoint yet. Local only.
-  const transferThread = useCallback((id: string, targetAgentId: string) => {
-    dispatch({ type: "patch", threadId: id, patch: { state: "transferred", transferredTo: targetAgentId, openedAt: undefined } });
-  }, []);
+  /**
+   * Hands the chat to another agent, then hides it here. Same pattern as resolveThread: a failed backend call keeps the
+   * chat open. TODO(backend): agentApi.transfer is a placeholder (resolves immediately) until the endpoint exists,
+   * so for now this only hides the chat locally.
+   */
+  const transferThread = useCallback(
+    async (id: string, targetAgentId: string) => {
+      try {
+        await agentApi.transfer(id, targetAgentId);
+      } catch (e) {
+        const code = statusOf(e);
+        if (code !== 404 && code !== 410) {
+          notify(
+            code === 403
+              ? "That chat is assigned to another agent."
+              : code === 409
+                ? "That agent can't take the chat right now."
+                : "The chat could not be transferred. Try again."
+          );
+          return;
+        }
+      }
+      dispatch({ type: "patch", threadId: id, patch: { state: "transferred", transferredTo: targetAgentId, openedAt: undefined } });
+    },
+    [notify]
+  );
 
   /**
    * PATCH /threads/{id}/visitor. Resolves with null on success (the card is replaced by what the server stored)

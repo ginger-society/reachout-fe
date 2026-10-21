@@ -1,4 +1,4 @@
-import { GingerPresence, ReachoutPostmanService } from "@/services";
+import { GingerPresence, IAMService, ReachoutPostmanService } from "@/services";
 import { GINGER_SOCIETY_GINGERREACHOUTPOSTMAN_SERVICE } from "@/shared/references";
 import { ChatMessage, ChatThread, CustomerDetails, ThreadState } from "@/types/chat";
 
@@ -155,6 +155,17 @@ export const agentApi = {
     });
     return customerOf(raw);
   },
+
+  /**
+   * Hands the chat to another agent.
+   * TODO(backend): placeholder, no endpoint in the postman service yet. Expected shape:
+   *   POST /threads/{id}/transfer  { agent_id }
+   *   403 = not your chat, 404/410 = expired, 409 = target agent unavailable / at capacity.
+   * Replace the body with the generated client call; the caller in useChatDesk already handles errors.
+   */
+  transfer: async (_threadId: string, _targetAgentId: string): Promise<void> => {
+    // intentionally empty until the endpoint exists
+  },
 };
 
 // ───────────────────────── presence ─────────────────────────
@@ -202,5 +213,39 @@ export const presenceApi = {
       });
     });
     return out;
+  },
+};
+
+// ───────────────────────── transfer targets ─────────────────────────
+
+/** Agents are users that registered the "agent" capability with the presence service ... */
+export const TRANSFER_CAPABILITY = "agent";
+/** ... and belong to this IAM group. */
+export const TRANSFER_GROUP = "app.reachout";
+
+export interface TransferTarget {
+  /** IAM user id, as a string (same as the backend's agent id) */
+  id: string;
+  name: string;
+  color: string;
+}
+
+export const agentDirectoryApi = {
+  /**
+   * Agents online right now (GET /iam/online-users), without the signed-in agent.
+   * Assumes the generated IAM client method is `onlineGetOnlineUsers`; adjust this one call if it differs.
+   */
+  onlineAgents: async (selfId: number): Promise<TransferTarget[]> => {
+    const users = await IAMService.onlineGetOnlineUsers({
+      capability: TRANSFER_CAPABILITY,
+      group: TRANSFER_GROUP,
+    });
+    return users
+      .filter((u) => Number(u.id) !== selfId)
+      .map((u) => {
+        const id = String(u.id);
+        const name = [u.firstName, u.lastName].filter(Boolean).join(" ").trim();
+        return { id, name: name || `Agent ${id}`, color: colorFor(id) };
+      });
   },
 };

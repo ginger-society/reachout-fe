@@ -10,34 +10,6 @@ export const currentAgent: AgentProfile = {
   sites: ["abc.com", "xyz.com", "pqr.io"],
 };
 
-/** Other agents a chat can be transferred to. Replace with your API. */
-export const teammates: AgentProfile[] = [
-  {
-    id: "agent-2",
-    name: "Meera Iyer",
-    email: "meera.iyer@abc.com",
-    color: "#7c5cf0",
-    status: "available",
-    sites: ["abc.com", "xyz.com"],
-  },
-  {
-    id: "agent-3",
-    name: "Karthik Subramanian",
-    email: "karthik.s@abc.com",
-    color: "#0ea5a4",
-    status: "busy",
-    sites: ["xyz.com", "pqr.io"],
-  },
-  {
-    id: "agent-4",
-    name: "Divya Raman",
-    email: "divya.raman@abc.com",
-    color: "#ec4899",
-    status: "away",
-    sites: ["abc.com"],
-  },
-];
-
 /**
  * MOCK profile picture for the signed-in agent. It is sent to the backend when the agent takes a chat, so the
  * visitor sees it in the widget header. Replace with the agent's real picture once IAM exposes one.

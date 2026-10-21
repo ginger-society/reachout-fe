@@ -5,9 +5,10 @@ import ConversationQueue from "@/components/organisms/ConversationQueue/Conversa
 import PeekPanel from "@/components/organisms/PeekPanel/PeekPanel";
 import SessionGuard from "@/components/organisms/SessionGuard/SessionGuard";
 import { useChatDesk } from "@/hooks/useChatDesk";
-import { currentAgent, mockAvatarFor, teammates } from "@/mocks/agents";
+import { currentAgent, mockAvatarFor } from "@/mocks/agents";
 import { quickReplies } from "@/mocks/quickReplies";
 import { AgentProfile } from "@/types/chat";
+import { agentDirectoryApi } from "@/utils/chatApi";
 import { PeekAnchor, PeekMode } from "@/utils/peek";
 import { ValidateTokenResponse } from "@/services/IAMService_client";
 import styles from "./supportDashboard.module.scss";
@@ -37,6 +38,9 @@ const Desk = ({ user }: { user: ValidateTokenResponse }) => {
     status: "available",
     sites: [],
   };
+
+  // Agents online right now (minus me), fetched each time the transfer modal opens
+  const loadTransferTargets = useCallback(() => agentDirectoryApi.onlineAgents(agentId), [agentId]);
 
   // Only a chat that is still waiting in the queue can be peeked at.
   // If it gets picked up, taken by someone else, or the visitor leaves, the peek closes on its own.
@@ -103,7 +107,7 @@ const Desk = ({ user }: { user: ValidateTokenResponse }) => {
             <ChatPanel
               key={thread.id}
               thread={thread}
-              agents={teammates /* TODO: real agent list */}
+              loadTransferTargets={loadTransferTargets}
               onSend={desk.sendMessage}
               onTyping={desk.setAgentTyping}
               onUpdateCustomer={desk.updateCustomer}

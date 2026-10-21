@@ -9,7 +9,8 @@ import ThemedText from "@/components/atoms/ThemedText/ThemedText";
 import { useDismissable } from "@/hooks/useDismissable";
 import { CLOSED_CHAT_LINGER_MS } from "@/hooks/useChatDesk";
 import { useNow } from "@/hooks/useNow";
-import { AgentProfile, ChatThread, CustomerDetails } from "@/types/chat";
+import { ChatThread, CustomerDetails } from "@/types/chat";
+import type { TransferTarget } from "@/utils/chatApi";
 import { clockTime, displayName, isHttpUrl, langName, prettyUrl } from "@/utils/chatFormat";
 import CustomerDetailsModal from "./CustomerDetailsModal";
 import MessageBody from "./MessageBody";
@@ -27,8 +28,8 @@ const FRESH_MS = 6000;
 
 interface ChatPanelProps {
   thread: ChatThread;
-  /** agents this chat can be transferred to */
-  agents: AgentProfile[];
+  /** loads the agents that are online right now (used when the transfer modal opens) */
+  loadTransferTargets: () => Promise<TransferTarget[]>;
   onSend: (id: string, text: string) => void;
   /** the agent is typing (true) or stopped / sent (false): the visitor sees a typing indicator */
   onTyping: (id: string, typing: boolean) => void;
@@ -63,7 +64,7 @@ const ClosedNotice = ({
 
 const ChatPanel = ({
   thread,
-  agents,
+  loadTransferTargets,
   onSend,
   onTyping,
   onUpdateCustomer,
@@ -340,7 +341,7 @@ const ChatPanel = ({
       )}
       {modal === "transfer" && (
         <TransferChatModal
-          agents={agents}
+          loadTargets={loadTransferTargets}
           onTransfer={(agentId) => onTransfer(thread.id, agentId)}
           onClose={() => setModal(null)}
         />
