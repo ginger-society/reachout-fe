@@ -156,15 +156,9 @@ export const agentApi = {
     return customerOf(raw);
   },
 
-  /**
-   * Hands the chat to another agent.
-   * TODO(backend): placeholder, no endpoint in the postman service yet. Expected shape:
-   *   POST /threads/{id}/transfer  { agent_id }
-   *   403 = not your chat, 404/410 = expired, 409 = target agent unavailable / at capacity.
-   * Replace the body with the generated client call; the caller in useChatDesk already handles errors.
-   */
-  transfer: async (_threadId: string, _targetAgentId: string): Promise<void> => {
+  transfer: async (threadId: string, _targetAgentId: string): Promise<void> => {
     // intentionally empty until the endpoint exists
+    await ReachoutPostmanService.routesAgentTransferThread({ threadId, transferRequest: { agentId: _targetAgentId } });
   },
 };
 
