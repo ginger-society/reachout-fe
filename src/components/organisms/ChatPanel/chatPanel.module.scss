@@ -339,10 +339,16 @@
 }
 
 .bubbleCustomer {
-  transition: background-color 1.4s ease, border-color 1.4s ease;
+  // fade the tint out when .bubbleFresh is removed
+  transition: box-shadow 1.4s ease;
 }
+
+// New customer message: a translucent amber wash over the bubble's own colour,
+// so text contrast never depends on the theme.
 .bubbleCustomer.bubbleFresh {
-  background-color: var(--sd-fresh-bg, #fff1e6);
-  border-color: var(--sd-fresh-border, #f6d9c4);
+  box-shadow:
+    inset 0 0 0 100vmax rgba(245, 158, 11, 0.16),
+    0 0 0 1px rgba(245, 158, 11, 0.45);
 }
+
 .input:disabled { opacity: .6; cursor: not-allowed; }
