@@ -1,5 +1,5 @@
 import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { NotificationContext, Option } from "@ginger-society/ginger-ui";
+import { NotificationContext, Option, SnackbarTimer, useSnackbar } from "@ginger-society/ginger-ui";
 import { useNow } from "@/hooks/useNow";
 import { ChatMessage, ChatThread, CustomerDetails } from "@/types/chat";
 import { getAuthHeader } from "@/utils/agentAuth";
@@ -271,14 +271,23 @@ interface Options {
  *
  * The other direction of the chat needs nothing here: picking a chat up sends `profile` with POST /assign, the backend stores it and
  * streams it to the visitor together with this agent's presence channel (support_<sub>, see AGENT_CHANNEL_PREFIX).
+ *
+ * Errors and notices (failed send, pick-up conflicts, expired session, lost connection) are shown with ginger-ui's snackbar.
  */
 export function useChatDesk({ agentId, orgs = [], profile }: Options) {
   const [state, dispatch] = useReducer(reducer, {} as State);
   const [filterSites, setFilterSites] = useState<string[]>([]);
   const [connection, setConnection] = useState<Connection>("connecting");
-  const [error, setError] = useState<string | null>(null);
   const wamp = useContext(NotificationContext);
   const now = useNow(2000);
+
+  const { show } = useSnackbar();
+  const showRef = useRef(show); // read through a ref so the callbacks below never go stale
+  showRef.current = show;
+  const notify = useCallback(
+    (message: string) => showRef.current(<div>{message}</div>, SnackbarTimer.Long, true),
+    []
+  );
 
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -317,7 +326,7 @@ export function useChatDesk({ agentId, orgs = [], profile }: Options) {
       return auth ? { Authorization: auth } : {};
     };
     const fatal = (status: number) =>
-      setError(status === 401 || status === 403 ? "Your session has expired. Sign in again." : `Live updates stopped (${status}).`);
+      notify(status === 401 || status === 403 ? "Your session has expired. Sign in again." : `Live updates stopped (${status}).`);
 
     const queue = connectSse({
       url: `${baseUrl()}/threads${orgsKey ? `?orgs=${encodeURIComponent(orgsKey)}` : ""}`,
@@ -391,7 +400,12 @@ export function useChatDesk({ agentId, orgs = [], profile }: Options) {
       queue.close();
       mine.close();
     };
-  }, [agentId, orgsKey, hydrate]);
+  }, [agentId, orgsKey, hydrate, notify]);
+
+  // The streams reconnect on their own; just let the agent know.
+  useEffect(() => {
+    if (connection === "offline") notify("Connection lost. Reconnecting…");
+  }, [connection, notify]);
 
   // ---- selectors ----
   // The raw state holds time-based live data; `now` (2 s tick) re-derives presence, typing and the draft expiry.
@@ -619,79 +633,85 @@ export function useChatDesk({ agentId, orgs = [], profile }: Options) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgsKey, threads, filterSites]);
 
-  const siteValue = useMemo(() => siteOptions.filter((o) => filterSites.includes(o.value)), [siteOptions, filterSites]);
+  const siteValue = useMemo(() => siteOptions.filter((o) => filterSites.includes(String(o.value))), [siteOptions, filterSites]);
 
   const visibleQueue = useMemo(() => {
     if (siteValue.length === 0) return queue;
-    const allowed = new Set(siteValue.map((o) => o.value));
+    const allowed = new Set(siteValue.map((o) => String(o.value)));
     return queue.filter((t) => allowed.has(t.site));
   }, [queue, siteValue]);
 
-  const setSiteFilter = useCallback((options: Option[]) => setFilterSites(options.map((o) => o.value)), []);
+  const setSiteFilter = useCallback((options: Option[]) => setFilterSites(options.map((o) => String(o.value))), []);
 
   // ---- actions ----
   /** Picks up a queued chat: POST /assign/{id}. Ignored when the board is full. */
-  const openThread = useCallback(async (id: string) => {
-    const t = stateRef.current[id];
-    if (!t || t.state !== "queued" || assigning.current.has(id)) return;
-    const openNow = Object.values(stateRef.current).filter((x) => x.state === "open").length;
-    if (openNow + assigning.current.size >= MAX_OPEN_CHATS) return;
+  const openThread = useCallback(
+    async (id: string) => {
+      const t = stateRef.current[id];
+      if (!t || t.state !== "queued" || assigning.current.has(id)) return;
+      const openNow = Object.values(stateRef.current).filter((x) => x.state === "open").length;
+      if (openNow + assigning.current.size >= MAX_OPEN_CHATS) return;
 
-    assigning.current.add(id);
-    try {
-      dispatch({ type: "put", thread: await agentApi.assign(id, profileRef.current) });
-    } catch (e) {
-      const code = statusOf(e);
-      if (code === 409) {
-        dispatch({ type: "remove", threadId: id });
-        setError("Another agent already picked up that chat.");
-      } else if (code === 410 || code === 404) {
-        dispatch({ type: "remove", threadId: id });
-        setError("That chat has expired or the visitor already left.");
-      } else {
-        setError("Could not pick up the chat. Try again.");
+      assigning.current.add(id);
+      try {
+        dispatch({ type: "put", thread: await agentApi.assign(id, profileRef.current) });
+      } catch (e) {
+        const code = statusOf(e);
+        if (code === 409) {
+          dispatch({ type: "remove", threadId: id });
+          notify("Another agent already picked up that chat.");
+        } else if (code === 410 || code === 404) {
+          dispatch({ type: "remove", threadId: id });
+          notify("That chat has expired or the visitor already left.");
+        } else {
+          notify("Could not pick up the chat. Try again.");
+        }
+      } finally {
+        assigning.current.delete(id);
       }
-    } finally {
-      assigning.current.delete(id);
-    }
-  }, []);
+    },
+    [notify]
+  );
 
   /** Agent -> visitor: POST /threads/{id}/messages. Shown at once; retried with the same id, so never duplicated. */
-  const sendMessage = useCallback((id: string, text: string) => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    if (stateRef.current[id]?.visitorClosedAt) return; // the visitor left: nobody to read it
-    const clientId = newId();
-    dispatch({
-      type: "send_start",
-      threadId: id,
-      message: { id: clientId, sender: "agent", text: trimmed, sentAt: new Date().toISOString(), status: "sending" },
-    });
+  const sendMessage = useCallback(
+    (id: string, text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+      if (stateRef.current[id]?.visitorClosedAt) return; // the visitor left: nobody to read it
+      const clientId = newId();
+      dispatch({
+        type: "send_start",
+        threadId: id,
+        message: { id: clientId, sender: "agent", text: trimmed, sentAt: new Date().toISOString(), status: "sending" },
+      });
 
-    void (async () => {
-      for (let attempt = 0; ; attempt++) {
-        try {
-          dispatch({ type: "send_ok", threadId: id, message: await agentApi.reply(id, clientId, trimmed) });
-          return;
-        } catch (e) {
-          const code = statusOf(e);
-          const retryable = code === undefined || code >= 500 || code === 408;
-          if (retryable && attempt < MAX_SEND_ATTEMPTS) {
-            await sleep(Math.min(1000 * 2 ** attempt, 8000));
-            continue;
+      void (async () => {
+        for (let attempt = 0; ; attempt++) {
+          try {
+            dispatch({ type: "send_ok", threadId: id, message: await agentApi.reply(id, clientId, trimmed) });
+            return;
+          } catch (e) {
+            const code = statusOf(e);
+            const retryable = code === undefined || code >= 500 || code === 408;
+            if (retryable && attempt < MAX_SEND_ATTEMPTS) {
+              await sleep(Math.min(1000 * 2 ** attempt, 8000));
+              continue;
+            }
+            dispatch({ type: "send_failed", threadId: id, clientId });
+            if (code === 403) notify("That chat is assigned to another agent.");
+            else if (code === 410) {
+              // expired, resolved, or the visitor closed it while this was in flight
+              notify("That chat has ended. The message was not delivered.");
+            } else if (code === 429) notify("This chat reached its message limit.");
+            else notify("A message could not be sent.");
+            return;
           }
-          dispatch({ type: "send_failed", threadId: id, clientId });
-          if (code === 403) setError("That chat is assigned to another agent.");
-          else if (code === 410) {
-            // expired, resolved, or the visitor closed it while this was in flight
-            setError("That chat has ended. The message was not delivered.");
-          } else if (code === 429) setError("This chat reached its message limit.");
-          else setError("A message could not be sent.");
-          return;
         }
-      }
-    })();
-  }, []);
+      })();
+    },
+    [notify]
+  );
 
   /** The agent has seen the messages (e.g. via peek) without picking the chat up. */
   const markRead = useCallback((id: string) => {
@@ -703,18 +723,21 @@ export function useChatDesk({ agentId, orgs = [], profile }: Options) {
    * Closes the chat on the backend first and only then hides it, so a failed call never leaves a chat that looks
    * resolved here but comes back on reload. An already expired chat (404 / 410) is simply hidden.
    */
-  const resolveThread = useCallback(async (id: string) => {
-    try {
-      await agentApi.resolve(id);
-    } catch (e) {
-      const code = statusOf(e);
-      if (code !== 404 && code !== 410) {
-        setError(code === 403 ? "That chat is assigned to another agent." : "The chat could not be resolved. Try again.");
-        return;
+  const resolveThread = useCallback(
+    async (id: string) => {
+      try {
+        await agentApi.resolve(id);
+      } catch (e) {
+        const code = statusOf(e);
+        if (code !== 404 && code !== 410) {
+          notify(code === 403 ? "That chat is assigned to another agent." : "The chat could not be resolved. Try again.");
+          return;
+        }
       }
-    }
-    dispatch({ type: "patch", threadId: id, patch: { state: "resolved", openedAt: undefined } });
-  }, []);
+      dispatch({ type: "patch", threadId: id, patch: { state: "resolved", openedAt: undefined } });
+    },
+    [notify]
+  );
 
   /** "Remove now" on the visitor-left notice: the backend already closed the chat, so this is local only. */
   const dismissClosedThread = useCallback((id: string) => {
@@ -728,7 +751,7 @@ export function useChatDesk({ agentId, orgs = [], profile }: Options) {
 
   /**
    * PATCH /threads/{id}/visitor. Resolves with null on success (the card is replaced by what the server stored)
-   * or with a message to show next to the form. Nothing changes locally on failure.
+   * or with a message the caller shows in a snackbar. Nothing changes locally on failure.
    */
   const updateCustomer = useCallback(async (id: string, details: CustomerDetails): Promise<string | null> => {
     try {
@@ -767,7 +790,5 @@ export function useChatDesk({ agentId, orgs = [], profile }: Options) {
     /** tell the visitor the agent is typing in this chat (call on every change of the reply box) */
     setAgentTyping,
     connection,
-    error,
-    dismissError: () => setError(null),
   };
 }

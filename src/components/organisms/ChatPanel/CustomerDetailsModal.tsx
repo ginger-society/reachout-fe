@@ -4,25 +4,27 @@ import {
   Modal,
   ModalBody,
   ModalHeader,
+  SnackbarTimer,
   Text,
+  useSnackbar,
 } from "@ginger-society/ginger-ui";
 import { CustomerDetails } from "@/types/chat";
 import { CUSTOMER_LIMITS, isValidEmail, isValidPhone } from "@/utils/chatFormat";
 
 interface CustomerDetailsModalProps {
   initial: CustomerDetails;
-  /** Saves to the backend. Resolves with null on success, or with a message to show in the form. */
+  /** Saves to the backend. Resolves with null on success, or with a message to show the agent. */
   onSave: (details: CustomerDetails) => Promise<string | null>;
   onClose: () => void;
 }
 
 /** Name, email and phone: all optional. Mount it only while it should be open. */
 const CustomerDetailsModal = ({ initial, onSave, onClose }: CustomerDetailsModalProps) => {
+  const { show } = useSnackbar();
   const [name, setName] = useState(initial.name ?? "");
   const [email, setEmail] = useState(initial.email ?? "");
   const [phone, setPhone] = useState(initial.phone ?? "");
   const [saving, setSaving] = useState(false);
-  const [serverError, setServerError] = useState<string | null>(null);
 
   const emailInvalid = email.trim() !== "" && !isValidEmail(email.trim());
   const phoneInvalid = phone.trim() !== "" && !isValidPhone(phone.trim());
@@ -44,10 +46,9 @@ const CustomerDetailsModal = ({ initial, onSave, onClose }: CustomerDetailsModal
     }
 
     setSaving(true);
-    setServerError(null);
     const error = await onSave(next);
     setSaving(false);
-    if (error) setServerError(error); // stay open so nothing the agent typed is lost
+    if (error) show(<div>{error}</div>, SnackbarTimer.Long, true); // stay open so nothing the agent typed is lost
     else onClose();
   };
 
@@ -95,11 +96,6 @@ const CustomerDetailsModal = ({ initial, onSave, onClose }: CustomerDetailsModal
             clearable
           />
           {saving && <Text>Saving…</Text>}
-          {serverError && (
-            <p role="alert" style={{ margin: 0, color: "#dc2626", fontSize: 13 }}>
-              {serverError}
-            </p>
-          )}
         </div>
       </ModalBody>
     </Modal>

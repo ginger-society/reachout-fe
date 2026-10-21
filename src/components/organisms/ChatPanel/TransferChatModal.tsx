@@ -1,5 +1,11 @@
 import { useState } from "react";
-import { Modal, ModalBody, ModalHeader } from "@ginger-society/ginger-ui";
+import {
+  Modal,
+  ModalBody,
+  ModalHeader,
+  SnackbarTimer,
+  useSnackbar,
+} from "@ginger-society/ginger-ui";
 import Avatar from "@/components/atoms/Avatar/Avatar";
 import ThemedText from "@/components/atoms/ThemedText/ThemedText";
 import { AgentProfile, AgentStatus } from "@/types/chat";
@@ -20,12 +26,12 @@ interface TransferChatModalProps {
 
 /** Pick a teammate to take over the chat. Mount it only while it should be open. */
 const TransferChatModal = ({ agents, onTransfer, onClose }: TransferChatModalProps) => {
+  const { show } = useSnackbar();
   const [selectedId, setSelectedId] = useState<string>();
-  const [showError, setShowError] = useState(false);
 
   const handleOk = () => {
     if (!selectedId) {
-      setShowError(true);
+      show(<div>Select an agent to transfer this chat to.</div>, SnackbarTimer.Short, false);
       return;
     }
     onTransfer(selectedId);
@@ -53,10 +59,7 @@ const TransferChatModal = ({ agents, onTransfer, onClose }: TransferChatModalPro
                     name="transfer-agent"
                     className={styles.radio}
                     checked={selected}
-                    onChange={() => {
-                      setSelectedId(agent.id);
-                      setShowError(false);
-                    }}
+                    onChange={() => setSelectedId(agent.id)}
                   />
                   <Avatar name={agent.name} color={agent.color} />
                   <span className={styles.text}>
@@ -71,11 +74,6 @@ const TransferChatModal = ({ agents, onTransfer, onClose }: TransferChatModalPro
               );
             })}
           </div>
-        )}
-        {showError && (
-          <p className={styles.error} role="alert">
-            Select an agent to transfer this chat to.
-          </p>
         )}
       </ModalBody>
     </Modal>

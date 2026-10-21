@@ -1,10 +1,5 @@
-import { useCallback, useContext, useEffect, useState } from "react";
-import {
-  AuthContext,
-  AuthContextInterface,
-  SnackbarTimer,
-  useSnackbar,
-} from "@ginger-society/ginger-ui";
+import { useCallback, useContext, useState } from "react";
+import { AuthContext, AuthContextInterface } from "@ginger-society/ginger-ui";
 import ChatPanel from "@/components/organisms/ChatPanel/ChatPanel";
 import ConversationQueue from "@/components/organisms/ConversationQueue/ConversationQueue";
 import PeekPanel from "@/components/organisms/PeekPanel/PeekPanel";
@@ -32,7 +27,6 @@ const Desk = ({ user }: { user: ValidateTokenResponse }) => {
   const name = nameOf(user);
   // name + picture are what the visitor sees in the widget once this agent takes their chat
   const desk = useChatDesk({ agentId, profile: { name, avatarUrl: mockAvatarFor(user.sub) } });
-  const { show } = useSnackbar();
   const [peek, setPeek] = useState<PeekState | null>(null);
 
   const agent: AgentProfile = {
@@ -43,23 +37,6 @@ const Desk = ({ user }: { user: ValidateTokenResponse }) => {
     status: "available",
     sites: [],
   };
-
-  // Errors from the desk (failed send, pick-up conflicts, expired session ...) go to the snackbar.
-  const { error, dismissError } = desk;
-  useEffect(() => {
-    if (!error) return;
-    show(<div>{error}</div>, SnackbarTimer.Long, true);
-    dismissError();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [error]);
-
-  // Tell the agent when the live streams drop (they reconnect on their own).
-  useEffect(() => {
-    if (desk.connection === "offline") {
-      show(<div>Connection lost. Reconnecting…</div>, SnackbarTimer.Long, true);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [desk.connection]);
 
   // Only a chat that is still waiting in the queue can be peeked at.
   // If it gets picked up, taken by someone else, or the visitor leaves, the peek closes on its own.
