@@ -19,8 +19,12 @@ interface PeekPanelProps {
   replies: QuickReply[];
   atCapacity: boolean;
   maxOpen: number;
-  /** send a predefined reply; the chat stays in the queue */
-  onReply: (id: string, text: string) => void;
+  /**
+   * send a predefined reply; the chat stays in the queue.
+   * Resolves true when the server accepted it, false when it was refused (e.g. another agent replied a moment ago:
+   * the caller has already shown the agent a notice).
+   */
+  onReply: (id: string, text: string) => Promise<boolean>;
   onPickUp: (id: string) => void;
   /** returnFocus is true for Escape / close button, false for an outside click */
   onClose: (returnFocus: boolean) => void;
@@ -47,6 +51,7 @@ const PeekPanel = ({
   const panelRef = useRef<HTMLElement>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const [sentNote, setSentNote] = useState("");
+  const [sending, setSending] = useState(false);
   const [top, setTop] = useState(anchor.top);
 
   const level = waitLevel(thread, now);
@@ -103,9 +108,14 @@ const PeekPanel = ({
     return () => window.clearTimeout(id);
   }, [sentNote]);
 
-  const sendReply = (reply: QuickReply) => {
-    onReply(thread.id, reply.text);
-    setSentNote("Reply sent. The chat is still in your queue.");
+  const sendReply = async (reply: QuickReply) => {
+    if (sending) return; // one quick reply at a time from this card
+    setSending(true);
+    setSentNote("");
+    const ok = await onReply(thread.id, reply.text);
+    setSending(false);
+    // On a refusal the desk already showed a notice: don't claim the reply went out.
+    if (ok) setSentNote("Reply sent. The chat is still in your queue.");
   };
 
   const waitLabel =
@@ -205,7 +215,8 @@ const PeekPanel = ({
                     <button
                       type="button"
                       className={styles.reply}
-                      onClick={() => sendReply(reply)}
+                      disabled={sending}
+                      onClick={() => void sendReply(reply)}
                     >
                       {reply.text}
                     </button>

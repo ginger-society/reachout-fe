@@ -82,6 +82,7 @@ type Action =
   | { type: "send_start"; threadId: string; message: ChatMessage }
   | { type: "send_ok"; threadId: string; message: ChatMessage }
   | { type: "send_failed"; threadId: string; clientId: string }
+  | { type: "send_discard"; threadId: string; clientId: string } // the server refused it on purpose: drop the optimistic copy
   | { type: "presence"; online: Record<string, boolean>; now: number } // presence service verdicts, keyed by thread id
   | { type: "live_tab"; threadId: string; tabId: string; signal: VisitorTabSignal; now: number }
   | { type: "live_tab_closed"; threadId: string; tabId: string; now: number }
@@ -271,6 +272,13 @@ function reducer(s: State, a: Action): State {
       const messages = t.messages.map((m) => (m.id === a.clientId && m.status ? { ...m, status: "failed" as const } : m));
       return { ...s, [a.threadId]: { ...t, messages } };
     }
+    case "send_discard": {
+      // Only an unconfirmed message (still carrying a status) can be dropped: one the server accepted stays.
+      const t = s[a.threadId];
+      if (!t) return s;
+      const messages = t.messages.filter((m) => !(m.id === a.clientId && m.status));
+      return messages.length === t.messages.length ? s : { ...s, [a.threadId]: { ...t, messages } };
+    }
     case "presence": {
       // The presence service only says "reachable or not". Online / away is derived later (applyLive).
       // Only touch threads whose verdict changed (or is online, which refreshes "last seen").
@@ -350,6 +358,10 @@ interface Options {
  *
  * The other direction of the chat needs nothing here: picking a chat up sends `profile` with POST /assign, the backend stores it and
  * streams it to the visitor together with this agent's presence channel (support_<sub>, see AGENT_CHANNEL_PREFIX).
+ *
+ * Quick replies to a chat nobody has picked up are guarded by the backend: if another agent replied to the same chat in
+ * the last few seconds the reply is refused (409). `sendMessage` then drops the optimistic message, tells the agent
+ * and resolves to `false`.
  *
  * Errors and notices (failed send, pick-up conflicts, expired session, lost connection) are shown with ginger-ui's snackbar.
  */
@@ -774,12 +786,18 @@ export function useChatDesk({ agentId, orgs = [], profile }: Options) {
     [notify]
   );
 
-  /** Agent -> visitor: POST /threads/{id}/messages. Shown at once; retried with the same id, so never duplicated. */
+  /**
+   * Agent -> visitor: POST /threads/{id}/messages. Shown at once; retried with the same id, so never duplicated.
+   * Resolves to true once the server accepted the message, false when it was not sent (the agent has been told why).
+   *
+   * 409 = on a chat nobody has picked up, another agent replied a moment ago (backend peek lock). The optimistic
+   * message is removed again (it never reached the visitor) and the agent is asked to wait a few seconds.
+   */
   const sendMessage = useCallback(
-    (id: string, text: string) => {
+    async (id: string, text: string): Promise<boolean> => {
       const trimmed = text.trim();
-      if (!trimmed) return;
-      if (stateRef.current[id]?.visitorClosedAt) return; // the visitor left: nobody to read it
+      if (!trimmed) return false;
+      if (stateRef.current[id]?.visitorClosedAt) return false; // the visitor left: nobody to read it
       const clientId = newId();
       dispatch({
         type: "send_start",
@@ -787,29 +805,34 @@ export function useChatDesk({ agentId, orgs = [], profile }: Options) {
         message: { id: clientId, sender: "agent", text: trimmed, sentAt: new Date().toISOString(), status: "sending" },
       });
 
-      void (async () => {
-        for (let attempt = 0; ; attempt++) {
-          try {
-            dispatch({ type: "send_ok", threadId: id, message: await agentApi.reply(id, clientId, trimmed) });
-            return;
-          } catch (e) {
-            const code = statusOf(e);
-            const retryable = code === undefined || code >= 500 || code === 408;
-            if (retryable && attempt < MAX_SEND_ATTEMPTS) {
-              await sleep(Math.min(1000 * 2 ** attempt, 8000));
-              continue;
-            }
-            dispatch({ type: "send_failed", threadId: id, clientId });
-            if (code === 403) notify("That chat is assigned to another agent.");
-            else if (code === 410) {
-              // expired, resolved, or the visitor closed it while this was in flight
-              notify("That chat has ended. The message was not delivered.");
-            } else if (code === 429) notify("This chat reached its message limit.");
-            else notify("A message could not be sent.");
-            return;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          dispatch({ type: "send_ok", threadId: id, message: await agentApi.reply(id, clientId, trimmed) });
+          return true;
+        } catch (e) {
+          const code = statusOf(e);
+          const retryable = code === undefined || code >= 500 || code === 408;
+          if (retryable && attempt < MAX_SEND_ATTEMPTS) {
+            await sleep(Math.min(1000 * 2 ** attempt, 8000));
+            continue;
           }
+          if (code === 409) {
+            dispatch({ type: "send_discard", threadId: id, clientId });
+            notify(
+              "Someone tried replying to this chat just now. If you really want to reply, wait a few seconds and try again."
+            );
+            return false;
+          }
+          dispatch({ type: "send_failed", threadId: id, clientId });
+          if (code === 403) notify("That chat is assigned to another agent.");
+          else if (code === 410) {
+            // expired, resolved, or the visitor closed it while this was in flight
+            notify("That chat has ended. The message was not delivered.");
+          } else if (code === 429) notify("This chat reached its message limit.");
+          else notify("A message could not be sent.");
+          return false;
         }
-      })();
+      }
     },
     [notify]
   );
@@ -908,6 +931,7 @@ export function useChatDesk({ agentId, orgs = [], profile }: Options) {
     transferThread,
     updateCustomer,
     markRead,
+    /** resolves true when the server accepted the message, false when it was not sent */
     sendMessage,
     /** tell the visitor the agent is typing in this chat (call on every change of the reply box) */
     setAgentTyping,
