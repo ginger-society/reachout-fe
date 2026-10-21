@@ -1,8 +1,14 @@
-import { useCallback, useContext, useState } from "react";
-import { AuthContext, AuthContextInterface } from "@ginger-society/ginger-ui";
+import { useCallback, useContext, useEffect, useState } from "react";
+import {
+  AuthContext,
+  AuthContextInterface,
+  SnackbarTimer,
+  useSnackbar,
+} from "@ginger-society/ginger-ui";
 import ChatPanel from "@/components/organisms/ChatPanel/ChatPanel";
 import ConversationQueue from "@/components/organisms/ConversationQueue/ConversationQueue";
 import PeekPanel from "@/components/organisms/PeekPanel/PeekPanel";
+import SessionGuard from "@/components/organisms/SessionGuard/SessionGuard";
 import { useChatDesk } from "@/hooks/useChatDesk";
 import { currentAgent, mockAvatarFor, teammates } from "@/mocks/agents";
 import { quickReplies } from "@/mocks/quickReplies";
@@ -26,6 +32,7 @@ const Desk = ({ user }: { user: ValidateTokenResponse }) => {
   const name = nameOf(user);
   // name + picture are what the visitor sees in the widget once this agent takes their chat
   const desk = useChatDesk({ agentId, profile: { name, avatarUrl: mockAvatarFor(user.sub) } });
+  const { show } = useSnackbar();
   const [peek, setPeek] = useState<PeekState | null>(null);
 
   const agent: AgentProfile = {
@@ -33,9 +40,26 @@ const Desk = ({ user }: { user: ValidateTokenResponse }) => {
     name,
     email: user.sub,
     color: currentAgent.color,
-    status: desk.status,
+    status: "available",
     sites: [],
   };
+
+  // Errors from the desk (failed send, pick-up conflicts, expired session ...) go to the snackbar.
+  const { error, dismissError } = desk;
+  useEffect(() => {
+    if (!error) return;
+    show(<div>{error}</div>, SnackbarTimer.Long, true);
+    dismissError();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [error]);
+
+  // Tell the agent when the live streams drop (they reconnect on their own).
+  useEffect(() => {
+    if (desk.connection === "offline") {
+      show(<div>Connection lost. Reconnecting…</div>, SnackbarTimer.Long, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [desk.connection]);
 
   // Only a chat that is still waiting in the queue can be peeked at.
   // If it gets picked up, taken by someone else, or the visitor leaves, the peek closes on its own.
@@ -71,14 +95,10 @@ const Desk = ({ user }: { user: ValidateTokenResponse }) => {
     console.warn("Logout is not wired up yet");
   };
 
-  const notice = desk.error ?? (desk.connection === "offline" ? "Connection lost. Reconnecting…" : null);
-
   return (
     <div className={styles.root}>
       <ConversationQueue
         agent={agent}
-        status={desk.status}
-        onStatusChange={desk.setStatus}
         onLogout={handleLogout}
         threads={desk.queue}
         waitingCount={desk.waitingCount}
@@ -131,39 +151,6 @@ const Desk = ({ user }: { user: ValidateTokenResponse }) => {
           onClose={closePeek}
         />
       )}
-
-      {notice && (
-        <div
-          role="status"
-          style={{
-            position: "fixed",
-            bottom: 16,
-            left: "50%",
-            transform: "translateX(-50%)",
-            zIndex: 1000,
-            display: "flex",
-            gap: 12,
-            alignItems: "center",
-            padding: "10px 14px",
-            borderRadius: 10,
-            background: "#1f2430",
-            color: "#fff",
-            fontSize: 13,
-            boxShadow: "0 6px 24px rgba(0,0,0,.3)",
-          }}
-        >
-          <span>{notice}</span>
-          {desk.error && (
-            <button
-              type="button"
-              onClick={desk.dismissError}
-              style={{ background: "none", border: 0, color: "#fff", textDecoration: "underline", cursor: "pointer", font: "inherit" }}
-            >
-              Dismiss
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 };
@@ -189,7 +176,13 @@ const SupportDashboardPage = () => {
       </div>
     );
   }
-  return <Desk user={user} />;
+  return (
+    <>
+      {/* Outside Desk on purpose: Desk re-renders every second or two, the heartbeat must not be reset by that */}
+      <SessionGuard />
+      <Desk user={user} />
+    </>
+  );
 };
 
 export default SupportDashboardPage;

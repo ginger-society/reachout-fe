@@ -1,8 +1,7 @@
 import { useCallback, useContext, useEffect, useMemo, useReducer, useRef, useState } from "react";
-import { NotificationContext } from "@ginger-society/ginger-ui";
-import type { DropdownOption } from "@/components/atoms/MultiSelectDropdown/MultiSelectDropdown";
+import { NotificationContext, Option } from "@ginger-society/ginger-ui";
 import { useNow } from "@/hooks/useNow";
-import { AgentStatus, ChatMessage, ChatThread, CustomerDetails } from "@/types/chat";
+import { ChatMessage, ChatThread, CustomerDetails } from "@/types/chat";
 import { getAuthHeader } from "@/utils/agentAuth";
 import {
   agentApi,
@@ -245,7 +244,6 @@ interface Options {
    * restricts it per agent). Slugs only: lowercase letters, digits, - and _.
    */
   orgs?: string[];
-  initialStatus?: AgentStatus;
   /** Name and picture the visitor sees once you take their chat (sent with POST /assign). */
   profile: AgentCardInput;
 }
@@ -274,10 +272,9 @@ interface Options {
  * The other direction of the chat needs nothing here: picking a chat up sends `profile` with POST /assign, the backend stores it and
  * streams it to the visitor together with this agent's presence channel (support_<sub>, see AGENT_CHANNEL_PREFIX).
  */
-export function useChatDesk({ agentId, orgs = [], initialStatus = "available", profile }: Options) {
+export function useChatDesk({ agentId, orgs = [], profile }: Options) {
   const [state, dispatch] = useReducer(reducer, {} as State);
   const [filterSites, setFilterSites] = useState<string[]>([]);
-  const [status, setStatus] = useState<AgentStatus>(initialStatus);
   const [connection, setConnection] = useState<Connection>("connecting");
   const [error, setError] = useState<string | null>(null);
   const wamp = useContext(NotificationContext);
@@ -616,7 +613,7 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
     [threads]
   );
 
-  const siteOptions: DropdownOption[] = useMemo(() => {
+  const siteOptions: Option[] = useMemo(() => {
     const all = new Set([...orgs, ...threads.map((t) => t.site), ...filterSites]);
     return [...all].sort().map((site) => ({ label: site, value: site }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -630,7 +627,7 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
     return queue.filter((t) => allowed.has(t.site));
   }, [queue, siteValue]);
 
-  const setSiteFilter = useCallback((options: DropdownOption[]) => setFilterSites(options.map((o) => o.value)), []);
+  const setSiteFilter = useCallback((options: Option[]) => setFilterSites(options.map((o) => o.value)), []);
 
   // ---- actions ----
   /** Picks up a queued chat: POST /assign/{id}. Ignored when the board is full. */
@@ -751,8 +748,6 @@ export function useChatDesk({ agentId, orgs = [], initialStatus = "available", p
   return {
     /** every thread, whatever its state (used to look up the peeked chat) */
     threads,
-    status,
-    setStatus,
     queue: visibleQueue,
     waitingCount: queue.length,
     open,

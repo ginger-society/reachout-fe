@@ -1,11 +1,9 @@
 import Avatar from "@/components/atoms/Avatar/Avatar";
 import AgentMenu from "@/components/atoms/AgentMenu/AgentMenu";
 import PeekButton from "@/components/atoms/PeekButton/PeekButton";
-import MultiSelectDropdown, {
-  DropdownOption,
-} from "@/components/atoms/MultiSelectDropdown/MultiSelectDropdown";
+import { MultiSelect, Option } from "@ginger-society/ginger-ui";
 import { useNow } from "@/hooks/useNow";
-import { AgentProfile, AgentStatus, ChatThread } from "@/types/chat";
+import { AgentProfile, ChatThread } from "@/types/chat";
 import { langCode, langName, lastMessageOf, shortAgo } from "@/utils/chatFormat";
 import { PeekAnchor } from "@/utils/peek";
 import { WAIT_THRESHOLDS_SEC, waitLevel } from "@/utils/waitTime";
@@ -13,15 +11,13 @@ import styles from "./conversationQueue.module.scss";
 
 interface ConversationQueueProps {
   agent: AgentProfile;
-  status: AgentStatus;
-  onStatusChange: (status: AgentStatus) => void;
   onLogout: () => void;
   threads: ChatThread[];
   /** how many are waiting before the website filter is applied */
   waitingCount: number;
-  siteOptions: DropdownOption[];
-  siteValue: DropdownOption[];
-  onSiteChange: (value: DropdownOption[]) => void;
+  siteOptions: Option[];
+  siteValue: Option[];
+  onSiteChange: (value: Option[]) => void;
   openCount: number;
   maxOpen: number;
   onOpenThread: (id: string) => void;
@@ -41,8 +37,6 @@ interface ConversationQueueProps {
  */
 const ConversationQueue = ({
   agent,
-  status,
-  onStatusChange,
   onLogout,
   threads,
   waitingCount,
@@ -65,19 +59,12 @@ const ConversationQueue = ({
   return (
     <aside className={styles.sidebar} aria-label="Waiting conversations">
       <div className={styles.topBar}>
-        <AgentMenu
-          agent={agent}
-          status={status}
-          onStatusChange={onStatusChange}
-          onLogout={onLogout}
-        />
+        <AgentMenu agent={agent} onLogout={onLogout} />
       </div>
 
       <div className={styles.filter}>
-        <MultiSelectDropdown
-          ariaLabel="Filter waiting conversations by website"
-          placeholder="All websites"
-          emptyText="No websites assigned to you"
+        <MultiSelect
+          label="Filter by website"
           options={siteOptions}
           value={siteValue}
           onChange={onSiteChange}
