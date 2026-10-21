@@ -64,7 +64,6 @@ const ConversationQueue = ({
 
       <div className={styles.filter}>
         <MultiSelect
-          label="Filter by website"
           options={siteOptions}
           value={siteValue}
           onChange={onSiteChange}
